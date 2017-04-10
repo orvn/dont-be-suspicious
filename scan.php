@@ -16,8 +16,34 @@ $suspiciousPatterns = array(
     '/passthru\s*\(/i',
     '/popen\s*\(/i',
     '/proc_open\s*\(/i',
-    '/`.*`/i', // backticks indicicate suspicious shell exec usage
+    '/`.*`/i', // backticks indicate suspicious shell exec usage
     '/preg_replace\s*\(.*\/e.*\)/i', // preg_replace with /e modifier is suspicious
+    '/str_rot13\s*\(/i',
+    '/gzuncompress\s*\(/i',
+    '/gzinflate\s*\(/i',
+    '/strrev\s*\(/i',
+    '/fopen\s*\(/i',
+    '/fwrite\s*\(/i',
+    '/fread\s*\(/i',
+    '/file_put_contents\s*\(/i',
+    '/file_get_contents\s*\(/i',
+    '/unlink\s*\(/i',
+    '/rename\s*\(/i',
+    '/assert\s*\(/i',
+    '/include\s*\(/i',
+    '/include_once\s*\(/i',
+    '/require\s*\(/i',
+    '/require_once\s*\(/i',
+    '/\$_REQUEST/i',
+    '/\$_POST/i',
+    '/\$_GET/i',
+    '/\$_FILES/i',
+    '/\$_SERVER/i',
+    '/\$_COOKIE/i',
+    '/\$_SESSION/i',
+    '/\$_ENV/i',
+    '/php:\/\/input/i',
+    '/php:\/\/filter/i',
 );
 
 // Recursively scan dir
@@ -80,7 +106,6 @@ function logMessage($message) {
 }
 
 scanDirectory($directoryToScan);
-
 
 echo "Suspicious file scan complete! See $logFile for results.";
 ?>
