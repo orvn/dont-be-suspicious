@@ -44,6 +44,28 @@ $suspiciousPatterns = array(
     '/\$_ENV/i',
     '/php:\/\/input/i',
     '/php:\/\/filter/i',
+    '/curl_exec\s*\(/i',
+    '/curl_multi_exec\s*\(/i',
+    '/fsockopen\s*\(/i',
+    '/pfsockopen\s*\(/i',
+    '/stream_socket_client\s*\(/i',
+    '/stream_socket_server\s*\(/i',
+    '/session_start\s*\(/i',
+    '/session_regenerate_id\s*\(/i',
+    '/header\s*\(/i',
+    '/setcookie\s*\(/i',
+    '/setrawcookie\s*\(/i',
+    '/create_function\s*\(/i',
+    '/call_user_func\s*\(/i',
+    '/call_user_func_array\s*\(/i',
+    '/unserialize\s*\(/i',
+    '/\$\$/i', // Variable variables
+    '/phpinfo\s*\(/i',
+    '/die\s*\(/i',
+    '/exit\s*\(/i',
+    '/register_shutdown_function\s*\(/i',
+    '/ini_set\s*\(/i',
+    '/ini_get\s*\(/i',
 );
 
 // Recursively scan dir
