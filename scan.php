@@ -89,8 +89,8 @@ function scanFile($filePath) {
     $fileContent = file_get_contents($filePath);
     
     foreach ($suspiciousPatterns as $pattern) {
-        if (preg_match($pattern, $fileContent)) {
-            logMessage("Suspicious file found: $filePath");
+        if (preg_match($pattern, $fileContent, $matches)) {
+            logMessage("Suspicious file found: $filePath (Pattern: {$pattern})");
             return false;
         }
     }
