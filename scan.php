@@ -5,8 +5,13 @@
  */
 
 // Config
-$directoryToScan = '~/public_html/foo';
-$logFile = '~/suspicious_log.txt';
+$defaultDirectoryToScan = getcwd();
+$defaultLogFile = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
+
+// Get $1 and $2 args
+$directoryToScan = isset($argv[1]) ? $argv[1] : $defaultDirectoryToScan;
+$logFile = isset($argv[2]) ? $argv[2] : $defaultLogFile;
+
 $suspiciousPatterns = array(
     '/base64_decode\s*\(/i',
     '/eval\s*\(/i',
