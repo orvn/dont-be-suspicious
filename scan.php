@@ -66,6 +66,25 @@ $suspiciousPatterns = array(
     '/register_shutdown_function\s*\(/i',
     '/ini_set\s*\(/i',
     '/ini_get\s*\(/i',
+    '/mysql_query\s*\(/i',
+    '/mysqli_query\s*\(/i',
+    '/pg_query\s*\(/i',
+    '/sqlite_query\s*\(/i',
+    '/file_get_contents\s*\(\s*("|\')https?:\/\//i', // Remote file inclusion
+    '/mcrypt_encrypt\s*\(/i',
+    '/mcrypt_decrypt\s*\(/i',
+    '/openssl_encrypt\s*\(/i',
+    '/openssl_decrypt\s*\(/i',
+    '/base_convert\s*\(/i',
+    '/pack\s*\(/i',
+    '/unpack\s*\(/i',
+    '/ReflectionFunction\s*\(/i',
+    '/ReflectionMethod\s*\(/i',
+    '/ReflectionClass\s*\(/i',
+    '/backdoor/i',
+    '/shell/i',
+    '/cmd/i',
+    '/pcntl_exec\s*\(/i'
 );
 
 // Recursively scan dir
