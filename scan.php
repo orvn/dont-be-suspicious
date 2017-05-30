@@ -136,6 +136,8 @@ function scanFile($filePath) {
     
     foreach ($suspiciousPatterns as $pattern) {
         if (preg_match($pattern, $fileContent, $matches)) {
+            $redPattern = "\033[31m{$pattern}\033[0m"; // Red color for pattern
+            echo "Suspicious file found: $filePath (Pattern: {$redPattern})\n";
             logMessage("Suspicious file found: $filePath (Pattern: {$pattern})");
             return false;
         }
@@ -153,5 +155,6 @@ function logMessage($message) {
 
 scanDirectory($directoryToScan);
 
-echo "Suspicious file scan complete! See $logFile for results.";
+$greenMessage = "\033[32mSuspicious file scan complete! See $logFile for results.\033[0m";
+echo $greenMessage;
 ?>
