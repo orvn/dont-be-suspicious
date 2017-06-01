@@ -92,6 +92,23 @@ $suspiciousPatterns = array(
     '/pcntl_exec\s*\(/i'
 );
 
+// Perms for dirs
+function checkPerms($dir) {
+    if (!is_readable($dir)) {
+        throw new Exception("Error: unable to read directory: $dir");
+    }
+    $files = scandir($dir);
+    foreach ($files as $file) {
+        if ($file == '.' || $file == '..') {
+            continue;
+        }
+        $filePath = $dir . DIRECTORY_SEPARATOR . $file;
+        if (is_dir($filePath)) {
+            checkPerms($filePath);
+        }
+    }
+}
+
 // Recursively scan dir
 function scanDirectory($dir) {
     global $suspiciousPatterns, $logFile;
@@ -153,8 +170,12 @@ function logMessage($message) {
     file_put_contents($logFile, $logEntry, FILE_APPEND);
 }
 
-scanDirectory($directoryToScan);
-
-$greenMessage = "\033[32mSuspicious file scan complete! See $logFile for results.\033[0m";
-echo $greenMessage;
+try {
+    checkPerms($directoryToScan);
+    scanDirectory($directoryToScan);
+    $greenMessage = "\033[32mSuspicious file scan complete! See $logFile for results.\033[0m";
+    echo $greenMessage;
+} catch (Exception $e) {
+    echo "\033[31m" . $e->getMessage() . "\033[0m\n";
+}
 ?>
