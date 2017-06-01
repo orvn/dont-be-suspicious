@@ -5,13 +5,14 @@
  */
 
 // Config
-$defaultDirectoryToScan = getcwd();
-$defaultLogFile = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
+$defaultDir = getcwd();
+$defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
 
 // Get $1 and $2 args
-$directoryToScan = isset($argv[1]) ? $argv[1] : $defaultDirectoryToScan;
-$logFile = isset($argv[2]) ? $argv[2] : $defaultLogFile;
+$targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
+$targetLog = isset($argv[2]) ? $argv[2] : $defaultLog;
 
+// Running list of regex patterns for suspicious PHP
 $suspiciousPatterns = array(
     '/base64_decode\s*\(/i',
     '/eval\s*\(/i',
@@ -111,7 +112,7 @@ function checkPerms($dir) {
 
 // Recursively scan dir
 function scanDirectory($dir) {
-    global $suspiciousPatterns, $logFile;
+    global $suspiciousPatterns, $targetLog;
     $clean = true;
     $files = scandir($dir);
     
@@ -148,7 +149,7 @@ function scanDirectory($dir) {
 
 // Scan file
 function scanFile($filePath) {
-    global $suspiciousPatterns, $logFile;
+    global $suspiciousPatterns, $targetLog;
     $fileContent = file_get_contents($filePath);
     
     foreach ($suspiciousPatterns as $pattern) {
@@ -165,15 +166,15 @@ function scanFile($filePath) {
 
 // Write logs
 function logMessage($message) {
-    global $logFile;
+    global $targetLog;
     $logEntry = date('Y-m-d H:i:s') . ' - ' . $message . PHP_EOL;
-    file_put_contents($logFile, $logEntry, FILE_APPEND);
+    file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
 try {
-    checkPerms($directoryToScan);
-    scanDirectory($directoryToScan);
-    $greenMessage = "\033[32mSuspicious file scan complete! See $logFile for results.\033[0m";
+    checkPerms($targetDir);
+    scanDirectory($targetDir);
+    $greenMessage = "\033[32mSuspicious file scan complete! See $targetLog for results.\033[0m";
     echo $greenMessage;
 } catch (Exception $e) {
     echo "\033[31m" . $e->getMessage() . "\033[0m\n";
