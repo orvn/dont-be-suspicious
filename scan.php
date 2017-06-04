@@ -12,6 +12,16 @@ $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.l
 $targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
 $targetLog = isset($argv[2]) ? $argv[2] : $defaultLog;
 
+// Exclude dirs
+$excludedDirs = array();
+
+for ($i = 3; $i < count($argv); $i++) {
+    if (strpos($argv[$i], '--exclude=') === 0) {
+        $excludePaths = substr($argv[$i], 10);
+        $excludedDirs = array_merge($excludedDirs, explode(',', $excludePaths));
+    }
+}
+
 // Running list of regex patterns for suspicious PHP
 $suspiciousPatterns = array(
     '/base64_decode\s*\(/i',
@@ -93,6 +103,17 @@ $suspiciousPatterns = array(
     '/pcntl_exec\s*\(/i'
 );
 
+// Check if is excluded
+function isExcluded($dir) {
+    global $excludedDirs;
+    foreach ($excludedDirs as $excludedDir) {
+        if (strpos($dir, $excludedDir) === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Perms for dirs
 function checkPerms($dir) {
     if (!is_readable($dir)) {
@@ -123,6 +144,10 @@ function scanDirectory($dir) {
 
         $filePath = $dir . DIRECTORY_SEPARATOR . $file;
         
+        if (isExcluded($filePath)) {
+            continue;
+        }
+
         if (is_dir($filePath)) {
             // Recursively scan subdirs
             if (!scanDirectory($filePath)) {
