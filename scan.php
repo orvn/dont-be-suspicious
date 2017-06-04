@@ -175,7 +175,13 @@ function scanDirectory($dir) {
 // Scan file
 function scanFile($filePath) {
     global $suspiciousPatterns, $targetLog;
-    $fileContent = file_get_contents($filePath);
+    $fileContent = @file_get_contents($filePath);
+
+    if ($fileContent === false) {
+        echo "\033[31mError: Unable to read file: $filePath\033[0m\n";
+        logMessage("Error: Unable to read file: $filePath");
+        return false;
+    }
     
     foreach ($suspiciousPatterns as $pattern) {
         if (preg_match($pattern, $fileContent, $matches)) {
