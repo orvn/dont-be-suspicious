@@ -103,6 +103,10 @@ $suspiciousPatterns = array(
     '/pcntl_exec\s*\(/i'
 );
 
+// Counters for report
+$totalFilesScanned = 0;
+$suspiciousFilesFound = 0;
+
 // Check if is excluded
 function isExcluded($dir) {
     global $excludedDirs;
@@ -133,7 +137,7 @@ function checkPerms($dir) {
 
 // Recursively scan dir
 function scanDirectory($dir) {
-    global $suspiciousPatterns, $targetLog;
+    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound;
     $clean = true;
     $files = scandir($dir);
     
@@ -156,8 +160,10 @@ function scanDirectory($dir) {
         } else {
             // Scan leaf nodes, i.e., files
             if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
+                $totalFilesScanned++;
                 if (!scanFile($filePath)) {
                     $clean = false;
+                    $suspiciousFilesFound++;
                 }
             }
         }
@@ -207,6 +213,12 @@ try {
     scanDirectory($targetDir);
     $greenMessage = "\033[32mSuspicious file scan complete! See $targetLog for results.\033[0m";
     echo $greenMessage;
+
+    // Print report on completion
+    echo "\n\nSummary Report:\n";
+    echo "Total files scanned: $totalFilesScanned\n";
+    echo "Suspicious files found: $suspiciousFilesFound\n";
+
 } catch (Exception $e) {
     echo "\033[31m" . $e->getMessage() . "\033[0m\n";
 }
