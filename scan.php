@@ -7,6 +7,7 @@
 // Config
 $defaultDir = getcwd();
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
+$maxFileSize = 1 * 1024 * 1024; // 1MB
 
 // Get $1 and $2 args
 $targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
@@ -106,6 +107,7 @@ $suspiciousPatterns = array(
 // Counters for report
 $totalFilesScanned = 0;
 $suspiciousFilesFound = 0;
+$filesSkipped = 0;
 
 // Check if is excluded
 function isExcluded($dir) {
@@ -137,7 +139,7 @@ function checkPerms($dir) {
 
 // Recursively scan dir
 function scanDirectory($dir) {
-    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound;
+    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped;
     $clean = true;
     $files = scandir($dir);
     
@@ -160,6 +162,12 @@ function scanDirectory($dir) {
         } else {
             // Scan leaf nodes, i.e., files
             if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
+                if (filesize($filePath) > $maxFileSize) {
+                    $filesSkipped++;
+                    echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
+                    logMessage("File skipped due to size: $filePath");
+                    continue;
+                }
                 $totalFilesScanned++;
                 if (!scanFile($filePath)) {
                     $clean = false;
@@ -218,6 +226,7 @@ try {
     echo "\n\nSummary Report:\n";
     echo "Total files scanned: $totalFilesScanned\n";
     echo "Suspicious files found: $suspiciousFilesFound\n";
+    echo "Files skipped due to size: $filesSkipped\n";
 
 } catch (Exception $e) {
     echo "\033[31m" . $e->getMessage() . "\033[0m\n";
