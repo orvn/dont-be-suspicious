@@ -7,7 +7,7 @@
 // Config
 $defaultDir = getcwd();
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
-$maxFileSize = 1 * 1024 * 1024; // 1MB
+$maxFileSize = 1 * 1024 * 1024; // Default to 1MB
 
 // Get $1 and $2 args
 $targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
@@ -16,10 +16,13 @@ $targetLog = isset($argv[2]) ? $argv[2] : $defaultLog;
 // Exclude dirs
 $excludedDirs = array();
 
+// CLI flags
 for ($i = 3; $i < count($argv); $i++) {
     if (strpos($argv[$i], '--exclude=') === 0) {
         $excludePaths = substr($argv[$i], 10);
         $excludedDirs = array_merge($excludedDirs, explode(',', $excludePaths));
+    } elseif (strpos($argv[$i], '--max=') === 0) {
+        $maxFileSize = (int) substr($argv[$i], 6);
     }
 }
 
@@ -139,7 +142,7 @@ function checkPerms($dir) {
 
 // Recursively scan dir
 function scanDirectory($dir) {
-    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped;
+    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped, $maxFileSize;
     $clean = true;
     $files = scandir($dir);
     
@@ -162,7 +165,7 @@ function scanDirectory($dir) {
         } else {
             // Scan leaf nodes, i.e., files
             if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
-                if (filesize($filePath) > $maxFileSize) {
+                if ($maxFileSize > 0 && filesize($filePath) > $maxFileSize) {
                     $filesSkipped++;
                     echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
                     logMessage("File skipped due to size: $filePath");
