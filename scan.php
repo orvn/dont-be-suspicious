@@ -140,55 +140,6 @@ function checkPerms($dir) {
     }
 }
 
-// Recursively scan dir
-function scanDirectory($dir) {
-    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped, $maxFileSize;
-    $clean = true;
-    $files = scandir($dir);
-    
-    foreach ($files as $file) {
-        if ($file == '.' || $file == '..') {
-            continue;
-        }
-
-        $filePath = $dir . DIRECTORY_SEPARATOR . $file;
-        
-        if (isExcluded($filePath)) {
-            continue;
-        }
-
-        if (is_dir($filePath)) {
-            // Recursively scan subdirs
-            if (!scanDirectory($filePath)) {
-                $clean = false;
-            }
-        } else {
-            // Scan leaf nodes, i.e., files
-            if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
-                if ($maxFileSize > 0 && filesize($filePath) > $maxFileSize) {
-                    $filesSkipped++;
-                    echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
-                    logMessage("File skipped due to size: $filePath");
-                    continue;
-                }
-                $totalFilesScanned++;
-                if (!scanFile($filePath)) {
-                    $clean = false;
-                    $suspiciousFilesFound++;
-                }
-            }
-        }
-    }
-
-    if ($clean) {
-        logMessage("Directory clean: $dir");
-    } else {
-        logMessage("Suspicious files found in directory: $dir");
-    }
-
-    return $clean;
-}
-
 // Scan file
 function scanFile($filePath) {
     global $suspiciousPatterns, $targetLog;
@@ -219,6 +170,56 @@ function logMessage($message) {
     file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
+function scanDirectory($dir) {
+    global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped, $maxFileSize;
+    $clean = true;
+    $queue = array($dir);
+
+    while (!empty($queue)) {
+        $currentDir = array_shift($queue);
+        $files = scandir($currentDir);
+
+        foreach ($files as $file) {
+            if ($file == '.' || $file == '..') {
+                continue;
+            }
+
+            $filePath = $currentDir . DIRECTORY_SEPARATOR . $file;
+
+            if (isExcluded($filePath)) {
+                continue;
+            }
+
+            if (is_dir($filePath)) {
+                $queue[] = $filePath; // Add subdirectory to the queue
+            } else {
+                // Scan leaf nodes, i.e., files
+                if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
+                    if ($maxFileSize > 0 && filesize($filePath) > $maxFileSize) {
+                        $filesSkipped++;
+                        echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
+                        logMessage("File skipped due to size: $filePath");
+                        continue;
+                    }
+                    $totalFilesScanned++;
+                    if (!scanFile($filePath)) {
+                        $clean = false;
+                        $suspiciousFilesFound++;
+                    }
+                }
+            }
+        }
+    }
+
+    if ($clean) {
+        logMessage("Directory clean: $dir");
+    } else {
+        logMessage("Suspicious files found in directory: $dir");
+    }
+
+    return $clean;
+}
+
 try {
     checkPerms($targetDir);
     scanDirectory($targetDir);
@@ -226,7 +227,7 @@ try {
     echo $greenMessage;
 
     // Print report on completion
-    echo "\n\nSummary Report:\n";
+    echo "\n\n[Summary of Scan]\n\n";
     echo "Total files scanned: $totalFilesScanned\n";
     echo "Suspicious files found: $suspiciousFilesFound\n";
     echo "Files skipped due to size: $filesSkipped\n";
