@@ -43,6 +43,8 @@ php -f scan.php [target_directory] [log_file] [--exclude=dir1,dir2,...] [--max=s
 
 ## Enhancements
 
-Ideas for improvement
+_Ideas for improvement_
 - Move all patterns into a map with metadata on each one
+- Progress indicator
 - Score threat level per pattern and use scores to assess potential thread
+- Implement heuristic analysis approach
