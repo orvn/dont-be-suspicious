@@ -28,87 +28,87 @@ for ($i = 3; $i < count($argv); $i++) {
 
 // Running list of regex patterns for suspicious PHP
 $suspiciousPatterns = array(
-    '/base64_decode\s*\(/i',
-    '/eval\s*\(/i',
-    '/shell_exec\s*\(/i',
-    '/system\s*\(/i',
-    '/exec\s*\(/i',
-    '/passthru\s*\(/i',
-    '/popen\s*\(/i',
-    '/proc_open\s*\(/i',
-    '/`.*`/i', // backticks indicate suspicious shell exec usage
-    '/preg_replace\s*\(.*\/e.*\)/i', // preg_replace with /e modifier is suspicious
-    '/str_rot13\s*\(/i',
-    '/gzuncompress\s*\(/i',
-    '/gzinflate\s*\(/i',
-    '/strrev\s*\(/i',
-    '/fopen\s*\(/i',
-    '/fwrite\s*\(/i',
-    '/fread\s*\(/i',
-    '/file_put_contents\s*\(/i',
-    '/file_get_contents\s*\(/i',
-    '/unlink\s*\(/i',
-    '/rename\s*\(/i',
-    '/assert\s*\(/i',
-    '/include\s*\(/i',
-    '/include_once\s*\(/i',
-    '/require\s*\(/i',
-    '/require_once\s*\(/i',
-    '/\$_REQUEST/i',
-    '/\$_POST/i',
-    '/\$_GET/i',
-    '/\$_FILES/i',
-    '/\$_SERVER/i',
-    '/\$_COOKIE/i',
-    '/\$_SESSION/i',
-    '/\$_ENV/i',
-    '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i',
-    '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i',
-    '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i',
-    '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i',
-    '/php:\/\/input/i',
-    '/php:\/\/filter/i',
-    '/curl_exec\s*\(/i',
-    '/curl_multi_exec\s*\(/i',
-    '/fsockopen\s*\(/i',
-    '/pfsockopen\s*\(/i',
-    '/stream_socket_client\s*\(/i',
-    '/stream_socket_server\s*\(/i',
-    '/session_start\s*\(/i',
-    '/session_regenerate_id\s*\(/i',
-    '/header\s*\(/i',
-    '/setcookie\s*\(/i',
-    '/setrawcookie\s*\(/i',
-    '/create_function\s*\(/i',
-    '/call_user_func\s*\(/i',
-    '/call_user_func_array\s*\(/i',
-    '/unserialize\s*\(/i',
+    '/base64_decode\s*\(/i', // Most common obfuscation
+    '/eval\s*\(/i', // Arbitrary code eval
+    '/shell_exec\s*\(/i', // Shell execution
+    '/system\s*\(/i', // System command execution
+    '/exec\s*\(/i', // Command execution
+    '/passthru\s*\(/i', // Command execution with output
+    '/popen\s*\(/i', // Opens process for read-write
+    '/proc_open\s*\(/i', // Opens a process
+    '/`.*`/i', // Backticks suggest suspicious shell exec usage
+    '/preg_replace\s*\(.*\/e.*\)/i', // preg_replace with /e modifier
+    '/str_rot13\s*\(/i', // Another common obfuscation pattern
+    '/gzuncompress\s*\(/i', // Decompresses data
+    '/gzinflate\s*\(/i', // Decompresses data
+    '/strrev\s*\(/i', // String reversal
+    '/fopen\s*\(/i', // Opens file
+    '/fwrite\s*\(/i', // Writes to file
+    '/fread\s*\(/i', // Reads from file
+    '/file_put_contents\s*\(/i', //  Writes to file
+    '/file_get_contents\s*\(/i', // Reads from file
+    '/unlink\s*\(/i', // Deletes file
+    '/rename\s*\(/i', // Renames file
+    '/assert\s*\(/i', // Executes some PHP
+    // '/include\s*\(/i',
+    // '/include_once\s*\(/i',
+    // '/require\s*\(/i',
+    // '/require_once\s*\(/i',
+    '/\$_REQUEST/i', // User input
+    '/\$_POST/i', // User input
+    '/\$_GET/i', // User input
+    '/\$_FILES/i', // User input
+    '/\$_SERVER/i', // Server variables
+    '/\$_COOKIE/i', // User cookies
+    '/\$_SESSION/i', // User session data
+    '/\$_ENV/i', // Environment variables
+    '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i', // HTTP Referrer
+    '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i', // User Agent
+    '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i', // Matches user agent or referrer
+    '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i', // Checks user agent or referrer
+    '/php:\/\/input/i', // Raw POST data
+    '/php:\/\/filter/i', // PHP filter wrapper
+    '/curl_exec\s*\(/i', // Starts curl session
+    '/curl_multi_exec\s*\(/i', // Executes multiple cURL sessions
+    '/fsockopen\s*\(/i', // Opens a socket connection
+    '/pfsockopen\s*\(/i', // Opens a persistent socket connection
+    '/stream_socket_client\s*\(/i', // Creates a socket client
+    '/stream_socket_server\s*\(/i', // Creates a socket server
+    '/session_start\s*\(/i', // Starts a session
+    '/session_regenerate_id\s*\(/i', // Regenerates session ID
+    '/header\s*\(/i', // Sends a raw HTTP header
+    '/setcookie\s*\(/i', // Sets a cookie
+    '/setrawcookie\s*\(/i', // Sets a raw cookie
+    '/create_function\s*\(/i', // Creates an anonymous function
+    '/call_user_func\s*\(/i', // Calls a callback function
+    '/call_user_func_array\s*\(/i', // Calls a callback function with an array of parameters
+    '/unserialize\s*\(/i', // Unserializes data
     '/\$\$/i', // Variable variables
-    '/phpinfo\s*\(/i',
-    '/die\s*\(/i',
-    '/exit\s*\(/i',
-    '/register_shutdown_function\s*\(/i',
-    '/ini_set\s*\(/i',
-    '/ini_get\s*\(/i',
-    '/mysql_query\s*\(/i',
-    '/mysqli_query\s*\(/i',
-    '/pg_query\s*\(/i',
-    '/sqlite_query\s*\(/i',
+    '/phpinfo\s*\(/i', // Outputs PHP configuration
+    '/die\s*\(/i', // Terminates script execution
+    '/exit\s*\(/i', // Terminates script execution
+    '/register_shutdown_function\s*\(/i', // Registers a shutdown function
+    '/ini_set\s*\(/i', // Sets a configuration option
+    '/ini_get\s*\(/i', // Gets a configuration option
+    '/mysql_query\s*\(/i', // MySQL query
+    '/mysqli_query\s*\(/i', // MySQLi query
+    '/pg_query\s*\(/i', // PostgreSQL query
+    '/sqlite_query\s*\(/i', // SQLite query
     '/file_get_contents\s*\(\s*("|\')https?:\/\//i', // Remote file inclusion
-    '/mcrypt_encrypt\s*\(/i',
-    '/mcrypt_decrypt\s*\(/i',
-    '/openssl_encrypt\s*\(/i',
-    '/openssl_decrypt\s*\(/i',
-    '/base_convert\s*\(/i',
-    '/pack\s*\(/i',
-    '/unpack\s*\(/i',
-    '/ReflectionFunction\s*\(/i',
-    '/ReflectionMethod\s*\(/i',
-    '/ReflectionClass\s*\(/i',
-    '/backdoor/i',
-    '/shell/i',
-    '/cmd/i',
-    '/pcntl_exec\s*\(/i'
+    '/mcrypt_encrypt\s*\(/i', // Encrypts data
+    '/mcrypt_decrypt\s*\(/i', // Decrypts data
+    '/openssl_encrypt\s*\(/i', // Encrypts data with OpenSSL
+    '/openssl_decrypt\s*\(/i', // Decrypts data with OpenSSL
+    '/base_convert\s*\(/i', // Converts a number from one base to another
+    '/pack\s*\(/i', // Packs data into binary string
+    '/unpack\s*\(/i', // Unpacks data from binary string
+    '/ReflectionFunction\s*\(/i', // Reflects on a function
+    '/ReflectionMethod\s*\(/i', // Reflects on a method
+    '/ReflectionClass\s*\(/i', // Reflects on a class
+    '/backdoor/i', // Indicates potential backdoor
+    '/shell/i', // Indicates shell commands
+    '/cmd/i', // Indicates command execution
+    '/pcntl_exec\s*\(/i' // Executes a program
 );
 
 // Counters for report
