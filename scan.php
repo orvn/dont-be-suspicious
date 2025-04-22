@@ -42,6 +42,16 @@ $suspiciousPatterns = array(
     '/gzuncompress\s*\(/i', // Decompresses data
     '/gzinflate\s*\(/i', // Decompresses data
     '/strrev\s*\(/i', // String reversal
+    '/date\s*\(/i', // Uses date functions (may indicate time-based behavior)
+    '/time\s*\(/i', // Uses current time (used to trigger actions)
+    '/rand\s*\(/i', // Uses random number generation
+    '/mt_rand\s*\(/i', // Mersenne Twister RNG
+    '/microtime\s*\(/i', // Uses precise timing (can be used in stealth logic)
+    // Suspicious script injection into HTML output
+    '/echo\s+["\']<script/i', // Outputs inline script tag
+    '/print\s+["\']<script/i', // Prints inline script tag
+    '/printf\s*\(\s*["\']<script/i', // Formatted print of script tag
+    '/document\.write\s*\(/i', // JavaScript injection pattern
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
