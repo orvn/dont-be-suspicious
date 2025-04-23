@@ -118,14 +118,6 @@ $suspiciousPatterns = array(
     '/session_start\s*\(/i', // Starts a session
     '/session_regenerate_id\s*\(/i', // Regenerates session ID
 
-    // WP specific
-    '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
-    '/add_filter\s*\(.*eval/i', // Code execution in WP filter
-    '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
-    '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
-    '/functions\.php/i', // Indicates direct theme function manipulation
-    '/wp-config\.php/i', // Indicates tampering with configuration
-
     // Function introspection
     '/ReflectionFunction\s*\(/i', // Reflects on a function
     '/ReflectionMethod\s*\(/i', // Reflects on a method
@@ -142,6 +134,14 @@ $suspiciousPatterns = array(
     '/backdoor/i', // Indicates potential backdoor
     '/shell/i', // Indicates shell commands
     '/cmd/i', // Indicates command execution
+
+    // WP specific
+    '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
+    '/add_filter\s*\(.*eval/i', // Code execution in WP filter
+    '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
+    '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
+    '/functions\.php/i', // Indicates direct theme function manipulation
+    '/wp-config\.php/i', // Indicates tampering with configuration
 
     // Dynamic inclusion (too many false positives)
     // '/include\s*\(/i',
