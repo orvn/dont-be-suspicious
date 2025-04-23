@@ -1,12 +1,14 @@
-name: Lint PHP
+name: Check PHP
 
 on:
     push:
       paths:
         - '**/*.php'
+        - '.github/workflows/*.yml'
     pull_request:
       paths:
         - '**/*.php'
+        - '.github/workflows/*.yml'
 
 jobs:
   lint:
