@@ -52,6 +52,10 @@ $suspiciousPatterns = array(
     '/print\s+["\']<script/i', // Prints inline script tag
     '/printf\s*\(\s*["\']<script/i', // Formatted print of script tag
     '/document\.write\s*\(/i', // JavaScript injection pattern
+    '/<iframe[^>]+style\s*=\s*["\']?display\s*:\s*none/i', // Hidden iframe using inline CSS
+    '/<iframe[^>]+width\s*=\s*["\']?0/i', // Zero-width iframe
+    '/<iframe[^>]+height\s*=\s*["\']?0/i', // Zero-height iframe
+    '/<div[^>]+style\s*=\s*["\']?display\s*:\s*none/i', // Hidden div used for fake content or obfuscation
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
