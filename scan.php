@@ -28,7 +28,23 @@ for ($i = 3; $i < count($argv); $i++) {
 
 // Running list of regex patterns for suspicious PHP
 $suspiciousPatterns = array(
+
+    // Obfuscation and encoding
     '/base64_decode\s*\(/i', // Most common obfuscation
+    '/str_rot13\s*\(/i', // Another common obfuscation pattern
+    '/gzuncompress\s*\(/i', // Decompresses data
+    '/gzinflate\s*\(/i', // Decompresses data
+    '/strrev\s*\(/i', // String reversal
+    '/preg_replace\s*\(.*\/e.*\)/i', // preg_replace with /e modifier
+    '/pack\s*\(/i', // Packs data into binary string
+    '/unpack\s*\(/i', // Unpacks data from binary string
+    '/base_convert\s*\(/i', // Converts a number from one base to another
+    '/mcrypt_encrypt\s*\(/i', // Encrypts data
+    '/mcrypt_decrypt\s*\(/i', // Decrypts data
+    '/openssl_encrypt\s*\(/i', // Encrypts data with OpenSSL
+    '/openssl_decrypt\s*\(/i', // Decrypts data with OpenSSL
+
+    // Code execution
     '/eval\s*\(/i', // Arbitrary code eval
     '/shell_exec\s*\(/i', // Shell execution
     '/system\s*\(/i', // System command execution
@@ -36,36 +52,13 @@ $suspiciousPatterns = array(
     '/passthru\s*\(/i', // Command execution with output
     '/popen\s*\(/i', // Opens process for read-write
     '/proc_open\s*\(/i', // Opens a process
-    '/`.*`/i', // Backticks suggest suspicious shell exec usage
-    '/preg_replace\s*\(.*\/e.*\)/i', // preg_replace with /e modifier
-    '/str_rot13\s*\(/i', // Another common obfuscation pattern
-    '/gzuncompress\s*\(/i', // Decompresses data
-    '/gzinflate\s*\(/i', // Decompresses data
-    '/strrev\s*\(/i', // String reversal
-    '/date\s*\(/i', // Uses date functions (may indicate time-based behavior)
-    '/time\s*\(/i', // Uses current time (used to trigger actions)
-    '/rand\s*\(/i', // Uses random number generation
-    '/mt_rand\s*\(/i', // Mersenne Twister RNG
-    '/microtime\s*\(/i', // Uses precise timing (can be used in stealth logic)
-    '/echo\s+["\']<script/i', // Outputs inline script tag
-    '/print\s+["\']<script/i', // Prints inline script tag
-    '/printf\s*\(\s*["\']<script/i', // Formatted print of script tag
-    '/document\.write\s*\(/i', // JavaScript injection pattern
-    '/<iframe[^>]+style\s*=\s*["\']?display\s*:\s*none/i', // Hidden iframe using inline CSS
-    '/<iframe[^>]+width\s*=\s*["\']?0/i', // Zero-width iframe
-    '/<iframe[^>]+height\s*=\s*["\']?0/i', // Zero-height iframe
-    '/<div[^>]+style\s*=\s*["\']?display\s*:\s*none/i', // Hidden div used for fake content or obfuscation
-    '/ob_start\s*\(/i', // Starts output buffering
-    '/ob_get_clean\s*\(/i', // Gets current buffer and deletes it
-    '/ob_end_clean\s*\(/i', // Ends and cleans output buffer
-    '/ob_get_contents\s*\(/i', // Gets current buffer contents
-    '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
-    '/add_filter\s*\(.*eval/i', // Code execution in WP filter
-    '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
-    '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
-    '/functions\.php/i', // Indicates direct theme function manipulation
-    '/wp-config\.php/i', // Indicates tampering with configuration
-    '/^\s*(GIF8|‰PNG|<\?xml|<svg)/i', // File begins with image or XML header (polyglot trick)
+    '/assert\s*\(/i', // Executes some PHP
+    '/call_user_func\s*\(/i', // Calls a callback function
+    '/call_user_func_array\s*\(/i', // Calls a callback function with an array of parameters
+    '/create_function\s*\(/i', // Creates an anonymous function
+    '/pcntl_exec\s*\(/i', // Executes a program
+
+    // File operations
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
@@ -73,11 +66,18 @@ $suspiciousPatterns = array(
     '/file_get_contents\s*\(/i', // Reads from file
     '/unlink\s*\(/i', // Deletes file
     '/rename\s*\(/i', // Renames file
-    '/assert\s*\(/i', // Executes some PHP
-    // '/include\s*\(/i',
-    // '/include_once\s*\(/i',
-    // '/require\s*\(/i',
-    // '/require_once\s*\(/i',
+    '/file_get_contents\s*\(\s*("|\')https?:\/\//i', // Remote file inclusion
+
+    // Dangerous or evasive functions
+    '/phpinfo\s*\(/i', // Outputs PHP configuration
+    '/die\s*\(/i', // Terminates script execution
+    '/exit\s*\(/i', // Terminates script execution
+    '/register_shutdown_function\s*\(/i', // Registers a shutdown function
+    '/ini_set\s*\(/i', // Sets a configuration option
+    '/ini_get\s*\(/i', // Gets a configuration option
+    '/\$\$/i', // Variable variables
+
+    // Superglobal use
     '/\$_REQUEST/i', // User input
     '/\$_POST/i', // User input
     '/\$_GET/i', // User input
@@ -86,53 +86,71 @@ $suspiciousPatterns = array(
     '/\$_COOKIE/i', // User cookies
     '/\$_SESSION/i', // User session data
     '/\$_ENV/i', // Environment variables
+
+    // HTTP behavior
     '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i', // HTTP Referrer
     '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i', // User Agent
     '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i', // Matches user agent or referrer
     '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i', // Checks user agent or referrer
-    '/php:\/\/input/i', // Raw POST data
-    '/php:\/\/filter/i', // PHP filter wrapper
+    '/header\s*\(/i', // Sends a raw HTTP header
+    '/setcookie\s*\(/i', // Sets a cookie
+    '/setrawcookie\s*\(/i', // Sets a raw cookie
+
+    // Output manipulation
+    '/echo\s+["\']<script/i', // Outputs inline script tag
+    '/print\s+["\']<script/i', // Prints inline script tag
+    '/printf\s*\(\s*["\']<script/i', // Formatted print of script tag
+    '/document\.write\s*\(/i', // JavaScript injection pattern
+    '/ob_start\s*\(/i', // Starts output buffering
+    '/ob_get_clean\s*\(/i', // Gets current buffer and deletes it
+    '/ob_end_clean\s*\(/i', // Ends and cleans output buffer
+    '/ob_get_contents\s*\(/i', // Gets current buffer contents
+
+    // Network operations
     '/curl_exec\s*\(/i', // Starts curl session
     '/curl_multi_exec\s*\(/i', // Executes multiple cURL sessions
     '/fsockopen\s*\(/i', // Opens a socket connection
     '/pfsockopen\s*\(/i', // Opens a persistent socket connection
     '/stream_socket_client\s*\(/i', // Creates a socket client
     '/stream_socket_server\s*\(/i', // Creates a socket server
+
+    // Session handling
     '/session_start\s*\(/i', // Starts a session
     '/session_regenerate_id\s*\(/i', // Regenerates session ID
-    '/header\s*\(/i', // Sends a raw HTTP header
-    '/setcookie\s*\(/i', // Sets a cookie
-    '/setrawcookie\s*\(/i', // Sets a raw cookie
-    '/create_function\s*\(/i', // Creates an anonymous function
-    '/call_user_func\s*\(/i', // Calls a callback function
-    '/call_user_func_array\s*\(/i', // Calls a callback function with an array of parameters
-    '/unserialize\s*\(/i', // Unserializes data
-    '/\$\$/i', // Variable variables
-    '/phpinfo\s*\(/i', // Outputs PHP configuration
-    '/die\s*\(/i', // Terminates script execution
-    '/exit\s*\(/i', // Terminates script execution
-    '/register_shutdown_function\s*\(/i', // Registers a shutdown function
-    '/ini_set\s*\(/i', // Sets a configuration option
-    '/ini_get\s*\(/i', // Gets a configuration option
+
+    // WP specific
+    '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
+    '/add_filter\s*\(.*eval/i', // Code execution in WP filter
+    '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
+    '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
+    '/functions\.php/i', // Indicates direct theme function manipulation
+    '/wp-config\.php/i', // Indicates tampering with configuration
+
+    // Function introspection
+    '/ReflectionFunction\s*\(/i', // Reflects on a function
+    '/ReflectionMethod\s*\(/i', // Reflects on a method
+    '/ReflectionClass\s*\(/i', // Reflects on a class
+
+    // DB operations
     '/mysql_query\s*\(/i', // MySQL query
     '/mysqli_query\s*\(/i', // MySQLi query
     '/pg_query\s*\(/i', // PostgreSQL query
     '/sqlite_query\s*\(/i', // SQLite query
-    '/file_get_contents\s*\(\s*("|\')https?:\/\//i', // Remote file inclusion
-    '/mcrypt_encrypt\s*\(/i', // Encrypts data
-    '/mcrypt_decrypt\s*\(/i', // Decrypts data
-    '/openssl_encrypt\s*\(/i', // Encrypts data with OpenSSL
-    '/openssl_decrypt\s*\(/i', // Decrypts data with OpenSSL
-    '/base_convert\s*\(/i', // Converts a number from one base to another
-    '/pack\s*\(/i', // Packs data into binary string
-    '/unpack\s*\(/i', // Unpacks data from binary string
-    '/ReflectionFunction\s*\(/i', // Reflects on a function
-    '/ReflectionMethod\s*\(/i', // Reflects on a method
-    '/ReflectionClass\s*\(/i', // Reflects on a class
+
+    // Shell tricks
+    '/`.*`/i', // Backticks suggest suspicious shell exec usage
     '/backdoor/i', // Indicates potential backdoor
     '/shell/i', // Indicates shell commands
     '/cmd/i', // Indicates command execution
-    '/pcntl_exec\s*\(/i' // Executes a program
+
+    // Dynamic inclusion (too many false positives)
+    // '/include\s*\(/i',
+    // '/include_once\s*\(/i',
+    // '/require\s*\(/i',
+    // '/require_once\s*\(/i',
+
+    // MIME confusion
+    '/^\s*(GIF8|‰PNG|<\?xml|<svg)/i' // File begins with image or XML header (polyglot trick)
 );
 
 // Counters for report
