@@ -59,6 +59,12 @@ $suspiciousPatterns = array(
     '/ob_get_clean\s*\(/i', // Gets current buffer and deletes it
     '/ob_end_clean\s*\(/i', // Ends and cleans output buffer
     '/ob_get_contents\s*\(/i', // Gets current buffer contents
+    '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
+    '/add_filter\s*\(.*eval/i', // Code execution in WP filter
+    '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
+    '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
+    '/functions\.php/i', // Indicates direct theme function manipulation
+    '/wp-config\.php/i', // Indicates tampering with configuration
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
