@@ -47,7 +47,6 @@ $suspiciousPatterns = array(
     '/rand\s*\(/i', // Uses random number generation
     '/mt_rand\s*\(/i', // Mersenne Twister RNG
     '/microtime\s*\(/i', // Uses precise timing (can be used in stealth logic)
-    // Suspicious script injection into HTML output
     '/echo\s+["\']<script/i', // Outputs inline script tag
     '/print\s+["\']<script/i', // Prints inline script tag
     '/printf\s*\(\s*["\']<script/i', // Formatted print of script tag
@@ -56,6 +55,10 @@ $suspiciousPatterns = array(
     '/<iframe[^>]+width\s*=\s*["\']?0/i', // Zero-width iframe
     '/<iframe[^>]+height\s*=\s*["\']?0/i', // Zero-height iframe
     '/<div[^>]+style\s*=\s*["\']?display\s*:\s*none/i', // Hidden div used for fake content or obfuscation
+    '/ob_start\s*\(/i', // Starts output buffering
+    '/ob_get_clean\s*\(/i', // Gets current buffer and deletes it
+    '/ob_end_clean\s*\(/i', // Ends and cleans output buffer
+    '/ob_get_contents\s*\(/i', // Gets current buffer contents
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
