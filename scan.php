@@ -65,6 +65,7 @@ $suspiciousPatterns = array(
     '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
     '/functions\.php/i', // Indicates direct theme function manipulation
     '/wp-config\.php/i', // Indicates tampering with configuration
+    '/^\s*(GIF8|‰PNG|<\?xml|<svg)/i', // File begins with image or XML header (polyglot trick)
     '/fopen\s*\(/i', // Opens file
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
