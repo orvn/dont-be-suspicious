@@ -1,12 +1,14 @@
-name: Lint PHP
+name: Check PHP
 
 on:
     push:
       paths:
         - '**/*.php'
+        - '.github/workflows/*.yml'
     pull_request:
       paths:
         - '**/*.php'
+        - '.github/workflows/*.yml'
 
 jobs:
   lint:
@@ -22,6 +24,10 @@ jobs:
         with:
           php-version: '8.1'
 
+      - name: Run PHP lint
+        run: |
+          find . -name "*.php" -print0 | xargs -0 -n1 php -l
+    
       - name: Install PHPStan
         run: |
           composer global require phpstan/phpstan
@@ -30,6 +36,3 @@ jobs:
         run: |
           phpstan analyse --level=max --no-progress .
 
-      - name: Run PHP lint
-        run: |
-          find . -name "*.php" -print0 | xargs -0 -n1 php -l

@@ -63,7 +63,6 @@ $suspiciousPatterns = array(
     '/fwrite\s*\(/i', // Writes to file
     '/fread\s*\(/i', // Reads from file
     '/file_put_contents\s*\(/i', //  Writes to file
-    '/file_get_contents\s*\(/i', // Reads from file
     '/unlink\s*\(/i', // Deletes file
     '/rename\s*\(/i', // Renames file
     '/file_get_contents\s*\(\s*("|\')https?:\/\//i', // Remote file inclusion
@@ -132,16 +131,16 @@ $suspiciousPatterns = array(
     // Shell tricks
     '/`.*`/i', // Backticks suggest suspicious shell exec usage
     '/backdoor/i', // Indicates potential backdoor
-    '/shell/i', // Indicates shell commands
-    '/cmd/i', // Indicates command execution
+    // '/shell/i', // Indicates shell commands
+    // '/cmd/i', // Indicates command execution
 
     // WP specific
     '/add_action\s*\(.*base64_decode/i', // Obfuscated code in WP hook
     '/add_filter\s*\(.*eval/i', // Code execution in WP filter
     '/wp_eval_request\s*\(/i', // Known malicious plugin pattern
     '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i', // Manipulates WP global hooks
-    '/functions\.php/i', // Indicates direct theme function manipulation
-    '/wp-config\.php/i', // Indicates tampering with configuration
+    // '/functions\.php/i', // Indicates direct theme function manipulation
+    // '/wp-config\.php/i', // Indicates tampering with configuration
 
     // Dynamic inclusion (too many false positives)
     // '/include\s*\(/i',
@@ -159,10 +158,10 @@ $suspiciousFilesFound = 0;
 $filesSkipped = 0;
 
 // Check if is excluded
-function isExcluded($dir) {
+function isExcluded(string $dir): bool {
     global $excludedDirs;
     foreach ($excludedDirs as $excludedDir) {
-        if (strpos($dir, $excludedDir) === 0) {
+        if (strpos((string)$dir, $excludedDir) === 0) {
             return true;
         }
     }
@@ -170,8 +169,8 @@ function isExcluded($dir) {
 }
 
 // Perms for dirs
-function checkPerms($dir) {
-    if (!is_readable($dir)) {
+function checkPerms(string $dir): void {
+    if (!is_readable((string)$dir)) {
         throw new Exception("Error: unable to read directory: $dir");
     }
     $files = scandir($dir);
@@ -187,7 +186,7 @@ function checkPerms($dir) {
 }
 
 // Scan file
-function scanFile($filePath) {
+function scanFile(string $filePath): bool {
     global $suspiciousPatterns, $targetLog;
     $fileContent = @file_get_contents($filePath);
 
@@ -210,13 +209,13 @@ function scanFile($filePath) {
 }
 
 // Write logs
-function logMessage($message) {
+function logMessage(string $message): void {
     global $targetLog;
     $logEntry = date('Y-m-d H:i:s') . ' - ' . $message . PHP_EOL;
     file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
-function scanDirectory($dir) {
+function scanDirectory(string $dir): bool {
     global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped, $maxFileSize;
     $clean = true;
     $queue = array($dir);
