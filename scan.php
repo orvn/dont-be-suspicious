@@ -158,10 +158,10 @@ $suspiciousFilesFound = 0;
 $filesSkipped = 0;
 
 // Check if is excluded
-function isExcluded($dir) {
+function isExcluded(string $dir): bool {
     global $excludedDirs;
     foreach ($excludedDirs as $excludedDir) {
-        if (strpos($dir, $excludedDir) === 0) {
+        if (strpos((string)$dir, $excludedDir) === 0) {
             return true;
         }
     }
@@ -169,8 +169,8 @@ function isExcluded($dir) {
 }
 
 // Perms for dirs
-function checkPerms($dir) {
-    if (!is_readable($dir)) {
+function checkPerms(string $dir): void {
+    if (!is_readable((string)$dir)) {
         throw new Exception("Error: unable to read directory: $dir");
     }
     $files = scandir($dir);
@@ -186,7 +186,7 @@ function checkPerms($dir) {
 }
 
 // Scan file
-function scanFile($filePath) {
+function scanFile(string $filePath): bool {
     global $suspiciousPatterns, $targetLog;
     $fileContent = @file_get_contents($filePath);
 
@@ -209,13 +209,13 @@ function scanFile($filePath) {
 }
 
 // Write logs
-function logMessage($message) {
+function logMessage(string $message): void {
     global $targetLog;
     $logEntry = date('Y-m-d H:i:s') . ' - ' . $message . PHP_EOL;
     file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
-function scanDirectory($dir) {
+function scanDirectory(string $dir): bool {
     global $suspiciousPatterns, $targetLog, $totalFilesScanned, $suspiciousFilesFound, $filesSkipped, $maxFileSize;
     $clean = true;
     $queue = array($dir);
