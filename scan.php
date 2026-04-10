@@ -196,8 +196,9 @@ $filesSkipped       = 0;
 $riskCounts         = array('critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0, 'clean' => 0);
 
 // Check if is excluded
-function isExcluded($dir) {
+function isExcluded(string $dir): bool {
     global $excludedDirs;
+    /** @var string[] $excludedDirs */
     foreach ($excludedDirs as $excludedDir) {
         if (strpos($dir, $excludedDir) === 0) {
             return true;
@@ -207,11 +208,14 @@ function isExcluded($dir) {
 }
 
 // Perms for dirs
-function checkPerms($dir) {
+function checkPerms(string $dir): void {
     if (!is_readable($dir)) {
         throw new Exception("Error: unable to read directory: $dir");
     }
     $files = scandir($dir);
+    if ($files === false) {
+        return;
+    }
     foreach ($files as $file) {
         if ($file == '.' || $file == '..') {
             continue;
@@ -223,8 +227,10 @@ function checkPerms($dir) {
     }
 }
 
-// Map a numeric score to a risk label, ANSI color, and array key
-function getRiskLevel($score) {
+/**
+ * @return array{label: string, color: string, key: string}
+ */
+function getRiskLevel(int $score): array {
     if ($score >= SCORE_CRITICAL) return array('label' => 'CRITICAL', 'color' => "\033[35m", 'key' => 'critical'); // Magenta
     if ($score >= SCORE_HIGH)     return array('label' => 'HIGH',     'color' => "\033[31m", 'key' => 'high');     // Red
     if ($score >= SCORE_MEDIUM)   return array('label' => 'MEDIUM',   'color' => "\033[33m", 'key' => 'medium');   // Yellow
@@ -232,12 +238,15 @@ function getRiskLevel($score) {
     return                               array('label' => 'CLEAN',    'color' => "\033[32m", 'key' => 'clean');    // Green
 }
 
-// Scan file accumulates scores for all matched patterns, returns total score
-function scanFile($filePath) {
+// Scan file — accumulates scores for all matched patterns, returns total score.
+// Returns -1 if the file cannot be read.
+function scanFile(string $filePath): int {
     global $suspiciousPatterns, $targetLog, $minRiskScore;
+    /** @var array<int, array{pattern: string, score: int, desc: string}> $suspiciousPatterns */
+    /** @var string $targetLog */
+    /** @var int $minRiskScore */
     $fileContent = @file_get_contents($filePath);
-    
-    // Returns -1 if the file cannot be read
+
     if ($fileContent === false) {
         echo "\033[31mError: Unable to read file: $filePath\033[0m\n";
         logMessage("Error: Unable to read file: $filePath");
@@ -245,7 +254,8 @@ function scanFile($filePath) {
     }
 
     $totalScore = 0;
-    $hits       = array();
+    /** @var array<int, array{pattern: string, score: int, desc: string}> $hits */
+    $hits = array();
 
     foreach ($suspiciousPatterns as $entry) {
         if (preg_match($entry['pattern'], $fileContent)) {
@@ -275,20 +285,35 @@ function scanFile($filePath) {
 }
 
 // Write logs
-function logMessage($message) {
+function logMessage(string $message): void {
     global $targetLog;
+    /** @var string $targetLog */
     $logEntry = date('Y-m-d H:i:s') . ' - ' . $message . PHP_EOL;
     file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
-function scanDirectory($dir) {
+function scanDirectory(string $dir): bool {
     global $targetLog, $totalFilesScanned, $filesSkipped, $maxFileSize, $riskCounts, $flagFromScore;
+    /** @var string $targetLog */
+    /** @var int $totalFilesScanned */
+    /** @var int $filesSkipped */
+    /** @var int $maxFileSize */
+    /** @var array<string, int> $riskCounts */
+    /** @var int $flagFromScore */
     $hasHighRisk = false;
-    $queue       = array($dir);
+    /** @var string[] $queue */
+    $queue = array($dir);
 
     while (!empty($queue)) {
         $currentDir = array_shift($queue);
-        $files      = scandir($currentDir);
+        if ($currentDir === null) {
+            continue;
+        }
+        $files = scandir($currentDir);
+        if ($files === false) {
+            logMessage("Error: Could not read directory: $currentDir");
+            continue;
+        }
 
         foreach ($files as $file) {
             if ($file == '.' || $file == '..') {
@@ -305,7 +330,8 @@ function scanDirectory($dir) {
                 $queue[] = $filePath;
             } else {
                 if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
-                    if ($maxFileSize > 0 && filesize($filePath) > $maxFileSize) {
+                    $size = filesize($filePath);
+                    if ($maxFileSize > 0 && $size !== false && $size > $maxFileSize) {
                         $filesSkipped++;
                         echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
                         logMessage("File skipped due to size: $filePath");
