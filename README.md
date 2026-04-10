@@ -48,3 +48,7 @@ _Ideas for improvement_
 - Progress indicator
 - Score threat level per pattern and use scores to assess potential thread
 - Implement heuristic analysis approach
+
+#### Lineage
+
+This project began as a result of observations I mention in [this 2016 Stack Overflow thread](https://stackoverflow.com/questions/9731800/wordpress-site-is-appears-clear-of-malware-but-clicking-on-google-search-result/78802204)
