@@ -4,10 +4,21 @@
  * Recursively scans a directory for potentially malicious files (esp. PHP)
  */
 
+
+// Feature flags
+// Heuristic score thresholds
+define('SCORE_LOW',      8);
+define('SCORE_MEDIUM',   20);
+define('SCORE_HIGH',     35);
+define('SCORE_CRITICAL', 60);
+
+$minRiskScore  = SCORE_LOW;    // Minimum score for a file to appear in output. Override with --min-risk.
+$flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the summary. Override with --flag-from.
+$maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
+
 // Config
 $defaultDir = getcwd();
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
-$maxFileSize = 1 * 1024 * 1024; // Default to 1MB
 
 // Get $1 and $2 args
 $targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
@@ -16,6 +27,14 @@ $targetLog = isset($argv[2]) ? $argv[2] : $defaultLog;
 // Exclude dirs
 $excludedDirs = array();
 
+// Risk label, score map for --min-risk and --flag-from flags
+$riskLabelMap = array(
+    'low'      => SCORE_LOW,
+    'medium'   => SCORE_MEDIUM,
+    'high'     => SCORE_HIGH,
+    'critical' => SCORE_CRITICAL,
+);
+
 // CLI flags
 for ($i = 3; $i < count($argv); $i++) {
     if (strpos($argv[$i], '--exclude=') === 0) {
@@ -23,27 +42,27 @@ for ($i = 3; $i < count($argv); $i++) {
         $excludedDirs = array_merge($excludedDirs, explode(',', $excludePaths));
     } elseif (strpos($argv[$i], '--max=') === 0) {
         $maxFileSize = (int) substr($argv[$i], 6);
+    } elseif (strpos($argv[$i], '--min-risk=') === 0) {
+        $label = strtolower(substr($argv[$i], 11));
+        if (isset($riskLabelMap[$label])) {
+            $minRiskScore = $riskLabelMap[$label];
+        }
+    } elseif (strpos($argv[$i], '--flag-from=') === 0) {
+        $label = strtolower(substr($argv[$i], 12));
+        if (isset($riskLabelMap[$label])) {
+            $flagFromScore = $riskLabelMap[$label];
+        }
     }
 }
 
-// Heuristic score thresholds
-// A file's total score is the sum of every matched pattern's score.
-// Scores are calibrated so that common-but-legitimate patterns contribute
-// little noise, while rare/dangerous patterns rapidly push a file into
-// higher risk bands.
-define('SCORE_LOW',      8);
-define('SCORE_MEDIUM',   20);
-define('SCORE_HIGH',     35);
-define('SCORE_CRITICAL', 60);
-
-// Running list of patterns with heuristic scores.
+// Patterns and their corresponding sensitivity
 //
-// score: how much this pattern contributes to the file's suspicion score.
-//   1-3  : noise — extremely common in legitimate code
-//   4-7  : eyebrow-raise — less common, slightly suspicious in isolation
-//   12-15: concerning — uncommon in clean code, alarming when combined
-//   20-25: strong indicator — rarely legitimate in web-facing PHP
-//   35-40: near-certain malware — almost never seen in legitimate code
+// score: how much this pattern contributes to the file's suspicion score
+//   1-3  : noise, extremely common in legitimate code
+//   4-7  : eyebrow-raise, less common, slightly suspicious in isolation
+//   12-15: concerning, uncommon in clean code, alarming when combined
+//   20-25: strong indicator, rarely legitimate in web-facing PHP
+//   35-40: near-certain malware, almost never seen in legitimate code
 //
 $suspiciousPatterns = array(
 
@@ -213,12 +232,12 @@ function getRiskLevel($score) {
     return                               array('label' => 'CLEAN',    'color' => "\033[32m", 'key' => 'clean');    // Green
 }
 
-// Scan file — accumulates scores for all matched patterns, returns total score.
-// Returns -1 if the file cannot be read.
+// Scan file accumulates scores for all matched patterns, returns total score
 function scanFile($filePath) {
-    global $suspiciousPatterns, $targetLog;
+    global $suspiciousPatterns, $targetLog, $minRiskScore;
     $fileContent = @file_get_contents($filePath);
-
+    
+    // Returns -1 if the file cannot be read
     if ($fileContent === false) {
         echo "\033[31mError: Unable to read file: $filePath\033[0m\n";
         logMessage("Error: Unable to read file: $filePath");
@@ -235,7 +254,7 @@ function scanFile($filePath) {
         }
     }
 
-    if ($totalScore >= SCORE_LOW) {
+    if ($totalScore >= $minRiskScore) {
         $risk  = getRiskLevel($totalScore);
         $color = $risk['color'];
         $label = $risk['label'];
@@ -263,7 +282,7 @@ function logMessage($message) {
 }
 
 function scanDirectory($dir) {
-    global $targetLog, $totalFilesScanned, $filesSkipped, $maxFileSize, $riskCounts;
+    global $targetLog, $totalFilesScanned, $filesSkipped, $maxFileSize, $riskCounts, $flagFromScore;
     $hasHighRisk = false;
     $queue       = array($dir);
 
@@ -299,7 +318,7 @@ function scanDirectory($dir) {
                     }
                     $risk = getRiskLevel($score);
                     $riskCounts[$risk['key']]++;
-                    if ($score >= SCORE_MEDIUM) {
+                    if ($score >= $flagFromScore) {
                         $hasHighRisk = true;
                     }
                 }
