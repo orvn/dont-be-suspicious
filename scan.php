@@ -17,7 +17,7 @@ $flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the sum
 $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
 
 // Config
-$defaultDir = getcwd();
+$defaultDir = getcwd() ?: '.';
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
 
 // Get $1 and $2 args
@@ -306,9 +306,6 @@ function scanDirectory(string $dir): bool {
 
     while (!empty($queue)) {
         $currentDir = array_shift($queue);
-        if ($currentDir === null) {
-            continue;
-        }
         $files = scandir($currentDir);
         if ($files === false) {
             logMessage("Error: Could not read directory: $currentDir");
