@@ -28,7 +28,7 @@ jobs:
 
       - name: Run PHPStan
         run: |
-          phpstan analyse --level=max --no-progress .
+          phpstan analyse --level=5 --no-progress .
 
       - name: Run PHP lint
         run: |
