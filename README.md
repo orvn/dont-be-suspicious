@@ -1,4 +1,6 @@
-# Don't be suspicious
+# Don't Be Suspicious
+
+<img src="./assets/images/dont-be-suspicious-2.png" width="300">
 
 A PHP malware scanner. Finds suspicious files by looking for common malicious patterns. This tool is meant as a starting point to signal where files that may have some degree of obfuscated code can be found, and is good for surveying large directories for potential compromises.
 
