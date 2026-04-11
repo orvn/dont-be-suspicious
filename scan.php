@@ -169,16 +169,16 @@ $suspiciousPatterns = array(
     // Shell tricks
     array('pattern' => '/`.*`/i',                                                             'score' => 20, 'desc' => 'Backtick shell execution'),
     array('pattern' => '/backdoor/i',                                                         'score' => 40, 'desc' => '"backdoor" — explicit backdoor indicator'),
-    array('pattern' => '/shell/i',                                                            'score' => 5,  'desc' => '"shell" — references shell commands'),
-    array('pattern' => '/cmd/i',                                                              'score' => 2,  'desc' => '"cmd" — references command execution'),
+    array('pattern' => '/shell/i',                                                            'score' => 0,  'desc' => '"shell" — references shell commands'),
+    array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution'),
 
     // WP specific
     array('pattern' => '/add_action\s*\(.*base64_decode/i',                                   'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload'),
     array('pattern' => '/add_filter\s*\(.*eval/i',                                            'score' => 35, 'desc' => 'WordPress filter with eval'),
     array('pattern' => '/wp_eval_request\s*\(/i',                                             'score' => 40, 'desc' => 'wp_eval_request() — known malicious plugin pattern'),
     array('pattern' => '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i',                       'score' => 12, 'desc' => '$GLOBALS[wp_filter] — direct WordPress hook manipulation'),
-    array('pattern' => '/functions\.php/i',                                                   'score' => 2,  'desc' => 'Reference to functions.php'),
-    array('pattern' => '/wp-config\.php/i',                                                   'score' => 5,  'desc' => 'Reference to wp-config.php (possible config tampering)'),
+    array('pattern' => '/functions\.php/i',                                                   'score' => 0,  'desc' => 'Reference to functions.php'),
+    array('pattern' => '/wp-config\.php/i',                                                   'score' => 0,  'desc' => 'Reference to wp-config.php (possible config tampering)'),
 
     // Dynamic inclusion (too many false positives)
     // array('pattern' => '/include\s*\(/i',      'score' => 3, 'desc' => 'include()'),
