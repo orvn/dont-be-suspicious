@@ -1,14 +1,14 @@
 name: Check PHP
 
 on:
-    push:
-      paths:
-        - '**/*.php'
-        - '.github/workflows/*.yml'
-    pull_request:
-      paths:
-        - '**/*.php'
-        - '.github/workflows/*.yml'
+  push:
+    paths:
+      - "**/*.php"
+      - ".github/workflows/*.yml"
+  pull_request:
+    paths:
+      - "**/*.php"
+      - ".github/workflows/*.yml"
 
 jobs:
   lint:
@@ -22,12 +22,12 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
+          php-version: "8.1"
 
       - name: Run PHP lint
         run: |
           find . -name "*.php" -print0 | xargs -0 -n1 php -l
-    
+
       - name: Install PHPStan
         run: |
           composer global require phpstan/phpstan
@@ -36,3 +36,18 @@ jobs:
         run: |
           phpstan analyse --level=5 --no-progress .
 
+  legacy-compat:
+    name: Legacy PHP compatibility
+    runs-on: ubuntu-latest
+    container:
+      image: php:5.6-cli
+
+    steps:
+      - name: Install git
+        run: apt-get update -qq && apt-get install -y -qq git
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run PHP 5.6 lint
+        run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
