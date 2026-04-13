@@ -17,7 +17,7 @@ $flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the sum
 $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
 
 // Config
-$defaultDir = getcwd() ?: '.';
+$defaultDir = getcwd() ? getcwd() : '.';
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
 
 // Get $1 and $2 args
@@ -196,7 +196,7 @@ $filesSkipped       = 0;
 $riskCounts         = array('critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0, 'clean' => 0);
 
 // Check if is excluded
-function isExcluded(string $dir): bool {
+function isExcluded($dir) {
     global $excludedDirs;
     /** @var string[] $excludedDirs */
     foreach ($excludedDirs as $excludedDir) {
@@ -208,7 +208,7 @@ function isExcluded(string $dir): bool {
 }
 
 // Perms for dirs
-function checkPerms(string $dir): void {
+function checkPerms($dir) {
     if (!is_readable($dir)) {
         throw new Exception("Error: unable to read directory: $dir");
     }
@@ -230,7 +230,7 @@ function checkPerms(string $dir): void {
 /**
  * @return array{label: string, color: string, key: string}
  */
-function getRiskLevel(int $score): array {
+function getRiskLevel($score) {
     if ($score >= SCORE_CRITICAL) return array('label' => 'CRITICAL', 'color' => "\033[35m", 'key' => 'critical'); // Magenta
     if ($score >= SCORE_HIGH)     return array('label' => 'HIGH',     'color' => "\033[31m", 'key' => 'high');     // Red
     if ($score >= SCORE_MEDIUM)   return array('label' => 'MEDIUM',   'color' => "\033[33m", 'key' => 'medium');   // Yellow
@@ -240,7 +240,7 @@ function getRiskLevel(int $score): array {
 
 // Scan file — accumulates scores for all matched patterns, returns total score.
 // Returns -1 if the file cannot be read.
-function scanFile(string $filePath): int {
+function scanFile($filePath) {
     global $suspiciousPatterns, $targetLog, $minRiskScore;
     /** @var array<int, array{pattern: string, score: int, desc: string}> $suspiciousPatterns */
     /** @var string $targetLog */
@@ -285,14 +285,14 @@ function scanFile(string $filePath): int {
 }
 
 // Write logs
-function logMessage(string $message): void {
+function logMessage($message) {
     global $targetLog;
     /** @var string $targetLog */
     $logEntry = date('Y-m-d H:i:s') . ' - ' . $message . PHP_EOL;
     file_put_contents($targetLog, $logEntry, FILE_APPEND);
 }
 
-function scanDirectory(string $dir): bool {
+function scanDirectory($dir) {
     global $targetLog, $totalFilesScanned, $filesSkipped, $maxFileSize, $riskCounts, $flagFromScore;
     /** @var string $targetLog */
     /** @var int $totalFilesScanned */
