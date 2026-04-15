@@ -364,7 +364,12 @@ try {
 
     echo "\033[32mSuspicious file scan complete! See $targetLog for results.\033[0m";
 
-    $flagged = $riskCounts['critical'] + $riskCounts['high'] + $riskCounts['medium'];
+    $flagged = 0;
+    foreach ($riskLabelMap as $label => $threshold) {
+        if ($threshold >= $flagFromScore) {
+            $flagged += $riskCounts[$label];
+        }
+    }
 
     echo "\n\n[Summary of Scan]\n\n";
     echo "Total files scanned:    $totalFilesScanned\n";
