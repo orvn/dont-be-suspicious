@@ -238,11 +238,33 @@ function getRiskLevel($score) {
     return                               array('label' => 'CLEAN',    'color' => "\033[32m", 'key' => 'clean');    // Green
 }
 
-// Scan file — accumulates scores for all matched patterns, returns total score.
-// Returns -1 if the file cannot be read.
+function getPatternHits($fileContent) {
+    global $suspiciousPatterns;
+    $hits = array();
+
+    foreach ($suspiciousPatterns as $entry) {
+        if (preg_match($entry['pattern'], $fileContent)) {
+            $hits[] = $entry;
+        }
+    }
+
+    return $hits;
+}
+
+function getScore($hits) {
+    $totalScore = 0;
+
+    foreach ($hits as $hit) {
+        $totalScore += $hit['score'];
+    }
+
+    return $totalScore;
+}
+
+// Scan file and return its risk score
+// Returns -1 if the file cannot be read
 function scanFile($filePath) {
-    global $suspiciousPatterns, $targetLog, $minRiskScore;
-    /** @var array<int, array{pattern: string, score: int, desc: string}> $suspiciousPatterns */
+    global $targetLog, $minRiskScore;
     /** @var string $targetLog */
     /** @var int $minRiskScore */
     $fileContent = @file_get_contents($filePath);
@@ -253,16 +275,8 @@ function scanFile($filePath) {
         return -1;
     }
 
-    $totalScore = 0;
-    /** @var array<int, array{pattern: string, score: int, desc: string}> $hits */
-    $hits = array();
-
-    foreach ($suspiciousPatterns as $entry) {
-        if (preg_match($entry['pattern'], $fileContent)) {
-            $totalScore += $entry['score'];
-            $hits[]      = $entry;
-        }
-    }
+    $hits = getPatternHits($fileContent);
+    $totalScore = getScore($hits);
 
     if ($totalScore >= $minRiskScore) {
         $risk  = getRiskLevel($totalScore);
