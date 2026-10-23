@@ -24,6 +24,11 @@ $minRiskScore  = SCORE_LOW;    // Minimum score for a file to appear in output. 
 $flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the summary. Override with --flag-from.
 $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
 
+// File types to scan
+$phpExtensions   = array('php', 'phtml', 'pht', 'php3', 'php4', 'php5', 'php7', 'phar', 'inc'); // Override with --ext
+$configFiles     = array('.htaccess', '.user.ini');
+$imageExtensions = array('ico', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'); // Only checked for hidden PHP
+
 // Config
 $defaultDir = getcwd() ? getcwd() : '.';
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
@@ -33,7 +38,7 @@ define('EXIT_CLEAN',   0);
 define('EXIT_FLAGGED', 1);
 define('EXIT_ERROR',   2);
 
-// Exclude paths as given, resolved with realpath() once the target is known
+// Raw --exclude args, resolved once the target is known
 $excludeArgs  = array();
 $excludedDirs = array();
 
@@ -45,9 +50,7 @@ $riskLabelMap = array(
     'critical' => SCORE_CRITICAL,
 );
 
-// CLI args
-// Positional: [target_directory] [log_file]
-// Flags can go anywhere, as --flag=value or --flag value
+// CLI args: [target_directory] [log_file], flags in any position
 $args       = isset($argv) ? array_slice($argv, 1) : array();
 $positional = array();
 $argCount   = count($args);
@@ -61,7 +64,7 @@ for ($i = 0; $i < $argCount; $i++) {
     $parts = explode('=', substr($args[$i], 2), 2);
     $flag  = $parts[0];
 
-    if (!in_array($flag, array('exclude', 'max', 'min-risk', 'flag-from'), true)) {
+    if (!in_array($flag, array('exclude', 'ext', 'max', 'min-risk', 'flag-from'), true)) {
         warn("Unknown flag ignored: --$flag");
         continue;
     }
@@ -79,6 +82,13 @@ for ($i = 0; $i < $argCount; $i++) {
         foreach (explode(',', $value) as $path) {
             if (trim($path) !== '') {
                 $excludeArgs[] = trim($path);
+            }
+        }
+    } elseif ($flag === 'ext') {
+        $phpExtensions = array();
+        foreach (explode(',', strtolower($value)) as $ext) {
+            if (trim($ext, " .") !== '') {
+                $phpExtensions[] = trim($ext, " .");
             }
         }
     } elseif ($flag === 'max') {
@@ -115,6 +125,11 @@ for ($i = 2; $i < count($positional); $i++) {
 //   20-25: strong indicator, rarely legitimate in web-facing PHP
 //   35-40: near-certain malware, almost never seen in legitimate code
 //
+// scope: which view of the file to match, see getSourceViews()
+//   code (default): code only, no comments, strings, inline HTML or method names
+//   text          : comments stripped
+//   raw           : as is
+//
 $suspiciousPatterns = array(
 
     // Obfuscation and encoding
@@ -123,7 +138,8 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])gzuncompress\s*\(/i',                              'score' => 4,  'desc' => 'gzuncompress() — decompression (chained obfuscation)'),
     array('pattern' => '/(^|[^A-Za-z0-9_])gzinflate\s*\(/i',                                 'score' => 4,  'desc' => 'gzinflate() — decompression (chained obfuscation)'),
     array('pattern' => '/(^|[^A-Za-z0-9_])strrev\s*\(/i',                                    'score' => 2,  'desc' => 'strrev() — string reversal'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])preg_replace\s*\(.*\/e.*\)/i',                    'score' => 35, 'desc' => 'preg_replace() with /e modifier — eval-equivalent code execution'),
+    // Literal first arg with an e modifier
+    array('pattern' => '/(^|[^A-Za-z0-9_])preg_replace\s*\(\s*([\'"])(.)(?:\\\\.|(?!\2).)*?\3[a-z]*e[a-z]*\2/i', 'score' => 35, 'desc' => 'preg_replace() with /e modifier — eval-equivalent code execution', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])pack\s*\(/i',                                      'score' => 2,  'desc' => 'pack() — binary data packing'),
     array('pattern' => '/(^|[^A-Za-z0-9_])unpack\s*\(/i',                                    'score' => 2,  'desc' => 'unpack() — binary data unpacking'),
     array('pattern' => '/(^|[^A-Za-z0-9_])base_convert\s*\(/i',                              'score' => 7,  'desc' => 'base_convert() — used in obfuscation chains'),
@@ -151,10 +167,10 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])fwrite\s*\(/i',                                    'score' => 2,  'desc' => 'fwrite() — writes to file'),
     array('pattern' => '/(^|[^A-Za-z0-9_])fread\s*\(/i',                                     'score' => 1,  'desc' => 'fread() — reads from file'),
     array('pattern' => '/(^|[^A-Za-z0-9_])file_put_contents\s*\(/i',                         'score' => 2,  'desc' => 'file_put_contents() — writes to file'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*(?!("|\')https?:\/\/)/i', 'score' => 1,  'desc' => 'file_get_contents() — reads a file'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*(?!("|\')https?:\/\/)/i', 'score' => 1,  'desc' => 'file_get_contents() — reads a file', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])unlink\s*\(/i',                                    'score' => 3,  'desc' => 'unlink() — deletes a file'),
     array('pattern' => '/(^|[^A-Za-z0-9_])rename\s*\(/i',                                    'score' => 2,  'desc' => 'rename() — renames a file'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*("|\')https?:\/\//i',    'score' => 20, 'desc' => 'file_get_contents() with remote URL — remote file inclusion'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*("|\')https?:\/\//i',    'score' => 20, 'desc' => 'file_get_contents() with remote URL — remote file inclusion', 'scope' => 'text'),
 
     // Dangerous or evasive functions
     array('pattern' => '/(^|[^A-Za-z0-9_])phpinfo\s*\(/i',                                   'score' => 5,  'desc' => 'phpinfo() — configuration disclosure'),
@@ -164,6 +180,9 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])ini_set\s*\(/i',                                   'score' => 2,  'desc' => 'ini_set() — modifies PHP runtime configuration'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ini_get\s*\(/i',                                   'score' => 1,  'desc' => 'ini_get() — reads PHP runtime configuration'),
     array('pattern' => '/\$\$/i',                                                             'score' => 7,  'desc' => 'Variable variables ($$var) — obfuscation / dynamic dispatch'),
+    array('pattern' => '/\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES|ENV)(\s*\[[^\]]*\])+\s*\(/i', 'score' => 35, 'desc' => '$_POST[...](...) — function name taken from user input'),
+    array('pattern' => '/\$[A-Za-z_]\w*\s*\(\s*\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES)/i',  'score' => 20, 'desc' => '$fn($_POST...) — variable function called with user input'),
+    array('pattern' => '/\$GLOBALS(\s*\[[^\]]*\])+\s*\(/i',                                  'score' => 12, 'desc' => '$GLOBALS[...](...) — function called from a global, common in obfuscated code'),
 
     // Superglobal use
     array('pattern' => '/\$_REQUEST/i',                                                       'score' => 5,  'desc' => '$_REQUEST — absorbs all user-controlled input types'),
@@ -176,19 +195,19 @@ $suspiciousPatterns = array(
     array('pattern' => '/\$_ENV/i',                                                           'score' => 2,  'desc' => '$_ENV — environment variables'),
 
     // HTTP behavior
-    array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i',                    'score' => 5,  'desc' => 'HTTP_REFERER check — potential bot/crawler cloaking'),
-    array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i',                 'score' => 5,  'desc' => 'HTTP_USER_AGENT check — potential search engine cloaking'),
-    array('pattern' => '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i',                  'score' => 5,  'desc' => 'Regex match on user agent or referrer'),
-    array('pattern' => '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i', 'score' => 5, 'desc' => 'String search on user agent or referrer'),
+    array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i',                    'score' => 5,  'desc' => 'HTTP_REFERER check — potential bot/crawler cloaking', 'scope' => 'text'),
+    array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i',                 'score' => 5,  'desc' => 'HTTP_USER_AGENT check — potential search engine cloaking', 'scope' => 'text'),
+    array('pattern' => '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i',                  'score' => 5,  'desc' => 'Regex match on user agent or referrer', 'scope' => 'text'),
+    array('pattern' => '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i', 'score' => 5, 'desc' => 'String search on user agent or referrer', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])header\s*\(/i',                                    'score' => 1,  'desc' => 'header() — sends raw HTTP header'),
     array('pattern' => '/(^|[^A-Za-z0-9_])setcookie\s*\(/i',                                 'score' => 1,  'desc' => 'setcookie() — sets a cookie'),
     array('pattern' => '/(^|[^A-Za-z0-9_])setrawcookie\s*\(/i',                              'score' => 1,  'desc' => 'setrawcookie() — sets a raw cookie'),
 
     // Output manipulation
-    array('pattern' => '/echo\s+["\']<script/i',                                              'score' => 12, 'desc' => 'Echoed inline <script> tag — possible XSS/injection'),
-    array('pattern' => '/print\s+["\']<script/i',                                             'score' => 12, 'desc' => 'Printed inline <script> tag — possible XSS/injection'),
-    array('pattern' => '/printf\s*\(\s*["\']<script/i',                                       'score' => 12, 'desc' => 'printf() with <script> tag — possible XSS/injection'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])document\.write\s*\(/i',                           'score' => 12, 'desc' => 'document.write() — JavaScript DOM injection'),
+    array('pattern' => '/echo\s+["\']<script/i',                                              'score' => 12, 'desc' => 'Echoed inline <script> tag — possible XSS/injection', 'scope' => 'text'),
+    array('pattern' => '/print\s+["\']<script/i',                                             'score' => 12, 'desc' => 'Printed inline <script> tag — possible XSS/injection', 'scope' => 'text'),
+    array('pattern' => '/printf\s*\(\s*["\']<script/i',                                       'score' => 12, 'desc' => 'printf() with <script> tag — possible XSS/injection', 'scope' => 'text'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])document\.write\s*\(/i',                           'score' => 12, 'desc' => 'document.write() — JavaScript DOM injection', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ob_start\s*\(/i',                                  'score' => 1,  'desc' => 'ob_start() — starts output buffering'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ob_get_clean\s*\(/i',                              'score' => 1,  'desc' => 'ob_get_clean() — captures and clears output buffer'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ob_end_clean\s*\(/i',                              'score' => 1,  'desc' => 'ob_end_clean() — discards output buffer'),
@@ -219,17 +238,17 @@ $suspiciousPatterns = array(
 
     // Shell tricks
     array('pattern' => '/`.*`/i',                                                             'score' => 20, 'desc' => 'Backtick shell execution'),
-    array('pattern' => '/backdoor/i',                                                         'score' => 40, 'desc' => '"backdoor" — explicit backdoor indicator'),
-    array('pattern' => '/shell/i',                                                            'score' => 0,  'desc' => '"shell" — references shell commands'),
-    array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution'),
+    array('pattern' => '/backdoor/i',                                                         'score' => 40, 'desc' => '"backdoor" — explicit backdoor indicator', 'scope' => 'text'),
+    array('pattern' => '/shell/i',                                                            'score' => 0,  'desc' => '"shell" — references shell commands', 'scope' => 'text'),
+    array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution', 'scope' => 'text'),
 
     // WP specific
-    array('pattern' => '/(^|[^A-Za-z0-9_])add_action\s*\(.*[^A-Za-z0-9_]base64_decode/i',    'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])add_filter\s*\(.*[^A-Za-z0-9_]eval/i',             'score' => 35, 'desc' => 'WordPress filter with eval'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])add_action\s*\(.*[^A-Za-z0-9_]base64_decode/i',    'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload', 'scope' => 'text'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])add_filter\s*\(.*[^A-Za-z0-9_]eval/i',             'score' => 35, 'desc' => 'WordPress filter with eval', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])wp_eval_request\s*\(/i',                           'score' => 40, 'desc' => 'wp_eval_request() — known malicious plugin pattern'),
-    array('pattern' => '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i',                       'score' => 12, 'desc' => '$GLOBALS[wp_filter] — direct WordPress hook manipulation'),
-    array('pattern' => '/functions\.php/i',                                                   'score' => 0,  'desc' => 'Reference to functions.php'),
-    array('pattern' => '/wp-config\.php/i',                                                   'score' => 0,  'desc' => 'Reference to wp-config.php (possible config tampering)'),
+    array('pattern' => '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i',                       'score' => 12, 'desc' => '$GLOBALS[wp_filter] — direct WordPress hook manipulation', 'scope' => 'text'),
+    array('pattern' => '/functions\.php/i',                                                   'score' => 0,  'desc' => 'Reference to functions.php', 'scope' => 'text'),
+    array('pattern' => '/wp-config\.php/i',                                                   'score' => 0,  'desc' => 'Reference to wp-config.php (possible config tampering)', 'scope' => 'text'),
 
     // Dynamic inclusion (too many false positives)
     // array('pattern' => '/include\s*\(/i',      'score' => 3, 'desc' => 'include()'),
@@ -238,7 +257,15 @@ $suspiciousPatterns = array(
     // array('pattern' => '/require_once\s*\(/i', 'score' => 3, 'desc' => 'require_once()'),
 
     // MIME confusion / polyglot
-    array('pattern' => '/^\s*(GIF8|\x89PNG|<\?xml|<svg)/i',                                  'score' => 35, 'desc' => 'Polyglot file header (MIME confusion / image-as-PHP attack)'),
+    array('pattern' => '/^\s*(GIF8|\x89PNG|<\?xml|<svg)/i',                                  'score' => 35, 'desc' => 'Polyglot file header (MIME confusion / image-as-PHP attack)', 'scope' => 'raw'),
+);
+
+// Server config files (.htaccess, .user.ini)
+$configPatterns = array(
+    array('pattern' => '/auto_(prepend|append)_file/i',                                                    'score' => 20, 'desc' => 'auto_prepend_file / auto_append_file — runs a file on every request', 'scope' => 'raw'),
+    array('pattern' => '/(AddHandler|AddType)\s+\S*(php|x-httpd)\S*\s+.*\.(jpe?g|png|gif|ico|bmp|webp|txt)\b/i', 'score' => 35, 'desc' => 'Image or text extension run as PHP', 'scope' => 'raw'),
+    array('pattern' => '/RewriteCond\s+%\{HTTP_REFERER\}.*(google|bing|yahoo|yandex|baidu)/i',             'score' => 25, 'desc' => 'Rewrite on search engine referrer — SEO redirect cloaking', 'scope' => 'raw'),
+    array('pattern' => '/RewriteCond\s+%\{HTTP_USER_AGENT\}.*(google|bing|yahoo|yandex|baidu)/i',          'score' => 12, 'desc' => 'Rewrite on search engine user agent — possible cloaking', 'scope' => 'raw'),
 );
 
 // Counters for report
@@ -252,7 +279,26 @@ function warn($message) {
     fwrite(STDERR, "\033[33mWarning: $message\033[0m\n");
 }
 
-// Resolve each exclude to a real path, trying it as given first, then relative to the target
+// php, config, image (hidden PHP only) or null to skip
+function getFileKind($fileName) {
+    global $phpExtensions, $configFiles, $imageExtensions;
+    /** @var string[] $phpExtensions */
+    /** @var string[] $configFiles */
+    /** @var string[] $imageExtensions */
+    if (in_array($fileName, $configFiles, true)) {
+        return 'config';
+    }
+    $ext = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+    if (in_array($ext, $phpExtensions, true)) {
+        return 'php';
+    }
+    if (in_array($ext, $imageExtensions, true)) {
+        return 'image';
+    }
+    return null;
+}
+
+// Resolve excludes, as given or relative to the target
 function resolveExcludes($excludeArgs, $targetDir) {
     $resolved = array();
     foreach ($excludeArgs as $path) {
@@ -269,7 +315,7 @@ function resolveExcludes($excludeArgs, $targetDir) {
     return $resolved;
 }
 
-// Check if a path is an excluded path or inside one
+// Check if path is excluded or inside an excluded dir
 function isExcluded($path) {
     global $excludedDirs;
     /** @var string[] $excludedDirs */
@@ -299,17 +345,89 @@ function getRiskLevel($score) {
     return                               array('label' => 'CLEAN',    'color' => "\033[32m", 'key' => 'clean');    // Green
 }
 
-function getPatternHits($fileContent) {
-    global $suspiciousPatterns;
-    $hits = array();
+// Views for pattern scopes, line breaks preserved
+/**
+ * @return array{raw: string, text: string, code: string}
+ */
+function getSourceViews($content) {
+    if (!function_exists('token_get_all')) {
+        return array('raw' => $content, 'text' => $content, 'code' => $content);
+    }
 
-    foreach ($suspiciousPatterns as $entry) {
-        if (preg_match($entry['pattern'], $fileContent)) {
-            $hits[] = $entry;
+    // Treat bare <? as PHP even when short_open_tag is off
+    $source = ini_get('short_open_tag') ? $content : preg_replace('/<\?(?!php|=|xml)/i', '<?php ', $content);
+
+    // Names after these are methods or declarations, not built-in calls
+    $nameOperators = array(T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION);
+    if (defined('T_NULLSAFE_OBJECT_OPERATOR')) {
+        $nameOperators[] = constant('T_NULLSAFE_OBJECT_OPERATOR');
+    }
+
+    $text = '';
+    $code = '';
+    $prev = null; // Last significant token
+
+    foreach (token_get_all($source) as $token) {
+        if (is_string($token)) {
+            $text .= $token;
+            $code .= $token;
+            if (!($token === '&' && $prev === T_FUNCTION)) {
+                $prev = $token;
+            }
+            continue;
+        }
+
+        list($id, $value) = $token;
+        $lines = str_repeat("\n", substr_count($value, "\n"));
+
+        if ($id === T_COMMENT || $id === T_DOC_COMMENT) {
+            // Space keeps eval/**/( matching and return/**/eval apart
+            $blank = $lines === '' ? ' ' : $lines;
+            $text .= $blank;
+            $code .= $blank;
+            continue;
+        }
+
+        $text .= $value;
+
+        if ($id === T_CONSTANT_ENCAPSED_STRING) {
+            $code .= $value[0] . $value[0] . $lines;
+        } elseif ($id === T_ENCAPSED_AND_WHITESPACE || $id === T_INLINE_HTML) {
+            $code .= $lines;
+        } elseif (!($id === T_STRING && in_array($prev, $nameOperators, true))) {
+            $code .= $value;
+        }
+
+        if ($id !== T_WHITESPACE) {
+            $prev = $id;
+        }
+    }
+
+    return array('raw' => $content, 'text' => $text, 'code' => $code);
+}
+
+function getPatternHits($fileContent, $patterns) {
+    $views = getSourceViews($fileContent);
+    $hits  = array();
+
+    foreach ($patterns as $entry) {
+        $scope = isset($entry['scope']) ? $entry['scope'] : 'code';
+        if (preg_match($entry['pattern'], $views[$scope], $match, PREG_OFFSET_CAPTURE)) {
+            // Skip a line break eaten by the leading boundary group
+            $offset        = $match[0][1] + strspn($match[0][0], "\r\n");
+            $entry['line'] = substr_count(substr($views[$scope], 0, $offset), "\n") + 1;
+            $hits[]        = $entry;
         }
     }
 
     return $hits;
+}
+
+// Trimmed source line, control chars masked so a file can't inject terminal escapes
+function getSnippet($lines, $lineNumber) {
+    $line = isset($lines[$lineNumber - 1]) ? trim($lines[$lineNumber - 1]) : '';
+    $line = preg_replace('/[\x00-\x08\x0B-\x1F\x7F]/', '?', $line);
+    return strlen($line) > 100 ? substr($line, 0, 100) . '...' : $line;
 }
 
 function getCurvedScore($score, $cap) {
@@ -360,8 +478,8 @@ function formatScoreBreakdown($score) {
 
 // Scan file and return its risk score
 // Returns -1 if the file cannot be read
-function scanFile($filePath) {
-    global $targetLog, $minRiskScore;
+function scanFile($filePath, $kind) {
+    global $targetLog, $minRiskScore, $suspiciousPatterns, $configPatterns;
     /** @var string $targetLog */
     /** @var int $minRiskScore */
     $fileContent = @file_get_contents($filePath);
@@ -372,7 +490,25 @@ function scanFile($filePath) {
         return -1;
     }
 
-    $hits       = getPatternHits($fileContent);
+    if ($kind === 'config') {
+        $hits = getPatternHits($fileContent, $configPatterns);
+    } elseif ($kind === 'image') {
+        $start = stripos($fileContent, '<?php');
+        if ($start === false) {
+            return 0;
+        }
+        // Blank the image bytes before the payload, keeping line numbers
+        $prefixLines = substr_count(substr($fileContent, 0, $start), "\n");
+        $hits = getPatternHits(str_repeat("\n", $prefixLines) . substr($fileContent, $start), $suspiciousPatterns);
+        array_unshift($hits, array(
+            'pattern' => '<?php',
+            'score'   => 35,
+            'desc'    => 'PHP code inside a .' . strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) . ' file',
+            'line'    => $prefixLines + 1,
+        ));
+    } else {
+        $hits = getPatternHits($fileContent, $suspiciousPatterns);
+    }
     $score      = getScoreBreakdown($hits);
     $totalScore = $score['total'];
     $isCurved   = $score['low'] + $score['weak'] > 0;
@@ -383,9 +519,14 @@ function scanFile($filePath) {
         $label = $risk['label'];
         $reset = "\033[0m";
 
+        $lines = explode("\n", $fileContent);
+
         echo "{$color}[{$label} — Score: {$totalScore}]{$reset} {$filePath}\n";
         foreach ($hits as $hit) {
-            echo "  + {$hit['desc']} ({$hit['score']})\n";
+            if ($hit['score'] > 0) {
+                echo "  + {$hit['desc']} ({$hit['score']}) line {$hit['line']}\n";
+                echo "\033[2m      " . getSnippet($lines, $hit['line']) . "{$reset}\n";
+            }
         }
         if ($isCurved) {
             echo "  = " . formatScoreBreakdown($score) . "\n";
@@ -393,7 +534,8 @@ function scanFile($filePath) {
 
         logMessage("[{$label} — Score: {$totalScore}] {$filePath}");
         foreach ($hits as $hit) {
-            logMessage("  + {$hit['desc']} (score: {$hit['score']}, pattern: {$hit['pattern']})");
+            logMessage("  + {$hit['desc']} (score: {$hit['score']}, line: {$hit['line']}, pattern: {$hit['pattern']})");
+            logMessage("      " . getSnippet($lines, $hit['line']));
         }
         if ($isCurved) {
             logMessage("  = " . formatScoreBreakdown($score));
@@ -426,7 +568,7 @@ function scanDirectory($dir) {
     $selfPath    = realpath(__FILE__);
     /** @var string[] $queue */
     $queue = array($dir);
-    // Real paths of dirs already scanned, so symlink loops and repeat links are walked once
+    // Real paths walked so far, guards against symlink loops
     /** @var array<string, bool> $visited */
     $visited = array();
 
@@ -466,19 +608,23 @@ function scanDirectory($dir) {
             if (is_dir($filePath)) {
                 $queue[] = $filePath;
             } else {
-                if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
-                    if ($file === $selfName && realpath($filePath) === $selfPath) {
+                $kind = getFileKind($file);
+                if ($kind !== null) {
+                    if ($kind === 'php' && $file === $selfName && realpath($filePath) === $selfPath) {
                         logMessage("Skipped the scanner itself: $filePath");
                         continue;
                     }
                     $size = filesize($filePath);
                     if ($maxFileSize > 0 && $size !== false && $size > $maxFileSize) {
-                        $filesSkipped++;
-                        echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
-                        logMessage("File skipped due to size: $filePath");
+                        // Large photos are expected, only report skipped code and config
+                        if ($kind !== 'image') {
+                            $filesSkipped++;
+                            echo "\033[33mFile skipped due to size: $filePath\033[0m\n";
+                            logMessage("File skipped due to size: $filePath");
+                        }
                         continue;
                     }
-                    $score = scanFile($filePath);
+                    $score = scanFile($filePath, $kind);
                     if ($score < 0) {
                         $filesUnreadable++;
                         continue;
