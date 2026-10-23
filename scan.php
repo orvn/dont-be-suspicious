@@ -12,6 +12,11 @@ define('SCORE_MEDIUM',   20);
 define('SCORE_HIGH',     35);
 define('SCORE_CRITICAL', 60);
 
+define('LOW_SIGNAL_CURVE_CAP',         8);
+define('LOW_SIGNAL_CURVE_HALF_SCORE',  6);
+define('WEAK_SIGNAL_CURVE_CAP',        10);
+define('WEAK_SIGNAL_CURVE_HALF_SCORE', 8);
+
 $minRiskScore  = SCORE_LOW;    // Minimum score for a file to appear in output. Override with --min-risk.
 $flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the summary. Override with --flag-from.
 $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
@@ -251,14 +256,34 @@ function getPatternHits($fileContent) {
     return $hits;
 }
 
-function getScore($hits) {
-    $totalScore = 0;
-
-    foreach ($hits as $hit) {
-        $totalScore += $hit['score'];
+function getCurvedScore($score, $cap, $halfScore) {
+    if ($score <= 0) {
+        return 0;
     }
 
-    return $totalScore;
+    return $cap * $score / ($halfScore + $score);
+}
+
+function getScore($hits) {
+    $lowScore = 0;
+    $weakScore = 0;
+    $fullScore = 0;
+
+    foreach ($hits as $hit) {
+        if ($hit['score'] >= 1 && $hit['score'] <= 3) {
+            $lowScore += $hit['score'];
+        } elseif ($hit['score'] >= 4 && $hit['score'] <= 7) {
+            $weakScore += $hit['score'];
+        } else {
+            $fullScore += $hit['score'];
+        }
+    }
+
+    $totalScore = $fullScore;
+    $totalScore += getCurvedScore($lowScore, LOW_SIGNAL_CURVE_CAP, LOW_SIGNAL_CURVE_HALF_SCORE);
+    $totalScore += getCurvedScore($weakScore, WEAK_SIGNAL_CURVE_CAP, WEAK_SIGNAL_CURVE_HALF_SCORE);
+
+    return (int) round($totalScore);
 }
 
 // Scan file and return its risk score
