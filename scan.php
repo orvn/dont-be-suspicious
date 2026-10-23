@@ -512,7 +512,7 @@ try {
     }
 
     $excludedDirs = resolveExcludes($excludeArgs, $targetDir);
-    scanDirectory($targetDir);
+    $isClean      = scanDirectory($targetDir);
 
     echo "\033[32mSuspicious file scan complete! See $targetLog for results.\033[0m";
 
@@ -536,7 +536,7 @@ try {
     echo "  \033[36mLow      : {$riskCounts['low']}\033[0m\n";
     echo "  \033[32mClean    : {$riskCounts['clean']}\033[0m\n";
 
-    exit($flagged > 0 ? EXIT_FLAGGED : EXIT_CLEAN);
+    exit($isClean ? EXIT_CLEAN : EXIT_FLAGGED);
 
 } catch (Exception $e) {
     echo "\033[31m" . $e->getMessage() . "\033[0m\n";
