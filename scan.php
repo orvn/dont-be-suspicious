@@ -28,11 +28,13 @@ $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Overrid
 $defaultDir = getcwd() ? getcwd() : '.';
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
 
-// Get $1 and $2 args
-$targetDir = isset($argv[1]) ? $argv[1] : $defaultDir;
-$targetLog = isset($argv[2]) ? $argv[2] : $defaultLog;
+// Exit codes
+define('EXIT_CLEAN',   0);
+define('EXIT_FLAGGED', 1);
+define('EXIT_ERROR',   2);
 
-// Exclude dirs
+// Exclude paths as given, resolved with realpath() once the target is known
+$excludeArgs  = array();
 $excludedDirs = array();
 
 // Risk label, score map for --min-risk and --flag-from flags
@@ -43,24 +45,65 @@ $riskLabelMap = array(
     'critical' => SCORE_CRITICAL,
 );
 
-// CLI flags
-for ($i = 3; $i < count($argv); $i++) {
-    if (strpos($argv[$i], '--exclude=') === 0) {
-        $excludePaths = substr($argv[$i], 10);
-        $excludedDirs = array_merge($excludedDirs, explode(',', $excludePaths));
-    } elseif (strpos($argv[$i], '--max=') === 0) {
-        $maxFileSize = (int) substr($argv[$i], 6);
-    } elseif (strpos($argv[$i], '--min-risk=') === 0) {
-        $label = strtolower(substr($argv[$i], 11));
-        if (isset($riskLabelMap[$label])) {
-            $minRiskScore = $riskLabelMap[$label];
+// CLI args
+// Positional: [target_directory] [log_file]
+// Flags can go anywhere, as --flag=value or --flag value
+$args       = isset($argv) ? array_slice($argv, 1) : array();
+$positional = array();
+$argCount   = count($args);
+
+for ($i = 0; $i < $argCount; $i++) {
+    if (strpos($args[$i], '--') !== 0) {
+        $positional[] = $args[$i];
+        continue;
+    }
+
+    $parts = explode('=', substr($args[$i], 2), 2);
+    $flag  = $parts[0];
+
+    if (!in_array($flag, array('exclude', 'max', 'min-risk', 'flag-from'), true)) {
+        warn("Unknown flag ignored: --$flag");
+        continue;
+    }
+
+    if (isset($parts[1])) {
+        $value = $parts[1];
+    } elseif ($i + 1 < $argCount) {
+        $value = $args[++$i];
+    } else {
+        warn("Missing value for --$flag");
+        continue;
+    }
+
+    if ($flag === 'exclude') {
+        foreach (explode(',', $value) as $path) {
+            if (trim($path) !== '') {
+                $excludeArgs[] = trim($path);
+            }
         }
-    } elseif (strpos($argv[$i], '--flag-from=') === 0) {
-        $label = strtolower(substr($argv[$i], 12));
-        if (isset($riskLabelMap[$label])) {
+    } elseif ($flag === 'max') {
+        if (preg_match('/^\d+$/', $value)) {
+            $maxFileSize = (int) $value;
+        } else {
+            warn("Invalid value for --max (expected bytes): $value");
+        }
+    } else {
+        $label = strtolower($value);
+        if (!isset($riskLabelMap[$label])) {
+            warn("Invalid value for --$flag (expected " . implode(', ', array_keys($riskLabelMap)) . "): $value");
+        } elseif ($flag === 'min-risk') {
+            $minRiskScore = $riskLabelMap[$label];
+        } else {
             $flagFromScore = $riskLabelMap[$label];
         }
     }
+}
+
+$targetDir = isset($positional[0]) ? $positional[0] : $defaultDir;
+$targetLog = isset($positional[1]) ? $positional[1] : $defaultLog;
+
+for ($i = 2; $i < count($positional); $i++) {
+    warn("Extra argument ignored: {$positional[$i]}");
 }
 
 // Patterns and their corresponding sensitivity
@@ -195,44 +238,54 @@ $suspiciousPatterns = array(
     // array('pattern' => '/require_once\s*\(/i', 'score' => 3, 'desc' => 'require_once()'),
 
     // MIME confusion / polyglot
-    array('pattern' => '/^\s*(GIF8|‰PNG|<\?xml|<svg)/i',                                     'score' => 35, 'desc' => 'Polyglot file header (MIME confusion / image-as-PHP attack)'),
+    array('pattern' => '/^\s*(GIF8|\x89PNG|<\?xml|<svg)/i',                                  'score' => 35, 'desc' => 'Polyglot file header (MIME confusion / image-as-PHP attack)'),
 );
 
 // Counters for report
 $totalFilesScanned  = 0;
 $filesSkipped       = 0;
+$filesUnreadable    = 0;
+$dirsUnreadable     = 0;
 $riskCounts         = array('critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0, 'clean' => 0);
 
-// Check if is excluded
-function isExcluded($dir) {
+function warn($message) {
+    fwrite(STDERR, "\033[33mWarning: $message\033[0m\n");
+}
+
+// Resolve each exclude to a real path, trying it as given first, then relative to the target
+function resolveExcludes($excludeArgs, $targetDir) {
+    $resolved = array();
+    foreach ($excludeArgs as $path) {
+        $real = realpath($path);
+        if ($real === false) {
+            $real = realpath($targetDir . DIRECTORY_SEPARATOR . $path);
+        }
+        if ($real === false) {
+            warn("Exclude path not found, ignored: $path");
+            continue;
+        }
+        $resolved[] = $real;
+    }
+    return $resolved;
+}
+
+// Check if a path is an excluded path or inside one
+function isExcluded($path) {
     global $excludedDirs;
     /** @var string[] $excludedDirs */
+    if (empty($excludedDirs)) {
+        return false;
+    }
+    $real = realpath($path);
+    if ($real === false) {
+        return false;
+    }
     foreach ($excludedDirs as $excludedDir) {
-        if (strpos($dir, $excludedDir) === 0) {
+        if ($real === $excludedDir || strpos($real, rtrim($excludedDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR) === 0) {
             return true;
         }
     }
     return false;
-}
-
-// Perms for dirs
-function checkPerms($dir) {
-    if (!is_readable($dir)) {
-        throw new Exception("Error: unable to read directory: $dir");
-    }
-    $files = scandir($dir);
-    if ($files === false) {
-        return;
-    }
-    foreach ($files as $file) {
-        if ($file == '.' || $file == '..') {
-            continue;
-        }
-        $filePath = $dir . DIRECTORY_SEPARATOR . $file;
-        if (is_dir($filePath)) {
-            checkPerms($filePath);
-        }
-    }
 }
 
 /**
@@ -359,31 +412,52 @@ function logMessage($message) {
 }
 
 function scanDirectory($dir) {
-    global $targetLog, $totalFilesScanned, $filesSkipped, $maxFileSize, $riskCounts, $flagFromScore;
+    global $targetLog, $totalFilesScanned, $filesSkipped, $filesUnreadable, $dirsUnreadable, $maxFileSize, $riskCounts, $flagFromScore;
     /** @var string $targetLog */
     /** @var int $totalFilesScanned */
     /** @var int $filesSkipped */
+    /** @var int $filesUnreadable */
+    /** @var int $dirsUnreadable */
     /** @var int $maxFileSize */
     /** @var array<string, int> $riskCounts */
     /** @var int $flagFromScore */
     $hasHighRisk = false;
+    $selfName    = basename(__FILE__);
+    $selfPath    = realpath(__FILE__);
     /** @var string[] $queue */
     $queue = array($dir);
+    // Real paths of dirs already scanned, so symlink loops and repeat links are walked once
+    /** @var array<string, bool> $visited */
+    $visited = array();
 
     while (!empty($queue)) {
         $currentDir = array_shift($queue);
-        $files = scandir($currentDir);
-        if ($files === false) {
-            logMessage("Error: Could not read directory: $currentDir");
+
+        $realDir = realpath($currentDir);
+        if ($realDir !== false && isset($visited[$realDir])) {
+            logMessage("Skipped already scanned directory (symlink): $currentDir");
             continue;
         }
+        if ($realDir !== false) {
+            $visited[$realDir] = true;
+        }
+
+        $files = @scandir($currentDir);
+        if ($files === false) {
+            $dirsUnreadable++;
+            echo "\033[31mError: Unable to read directory: $currentDir\033[0m\n";
+            logMessage("Error: Unable to read directory: $currentDir");
+            continue;
+        }
+
+        $dirPrefix = rtrim($currentDir, '/\\') . DIRECTORY_SEPARATOR;
 
         foreach ($files as $file) {
             if ($file == '.' || $file == '..') {
                 continue;
             }
 
-            $filePath = $currentDir . DIRECTORY_SEPARATOR . $file;
+            $filePath = $dirPrefix . $file;
 
             if (isExcluded($filePath)) {
                 continue;
@@ -393,6 +467,10 @@ function scanDirectory($dir) {
                 $queue[] = $filePath;
             } else {
                 if (pathinfo($filePath, PATHINFO_EXTENSION) === 'php') {
+                    if ($file === $selfName && realpath($filePath) === $selfPath) {
+                        logMessage("Skipped the scanner itself: $filePath");
+                        continue;
+                    }
                     $size = filesize($filePath);
                     if ($maxFileSize > 0 && $size !== false && $size > $maxFileSize) {
                         $filesSkipped++;
@@ -400,11 +478,12 @@ function scanDirectory($dir) {
                         logMessage("File skipped due to size: $filePath");
                         continue;
                     }
-                    $totalFilesScanned++;
                     $score = scanFile($filePath);
                     if ($score < 0) {
-                        continue; // unreadable
+                        $filesUnreadable++;
+                        continue;
                     }
+                    $totalFilesScanned++;
                     $risk = getRiskLevel($score);
                     $riskCounts[$risk['key']]++;
                     if ($score >= $flagFromScore) {
@@ -425,7 +504,14 @@ function scanDirectory($dir) {
 }
 
 try {
-    checkPerms($targetDir);
+    if (!is_dir($targetDir) || !is_readable($targetDir)) {
+        throw new Exception("Error: unable to read directory: $targetDir");
+    }
+    if (@file_put_contents($targetLog, '', FILE_APPEND) === false) {
+        throw new Exception("Error: unable to write log file: $targetLog");
+    }
+
+    $excludedDirs = resolveExcludes($excludeArgs, $targetDir);
     scanDirectory($targetDir);
 
     echo "\033[32mSuspicious file scan complete! See $targetLog for results.\033[0m";
@@ -440,6 +526,8 @@ try {
     echo "\n\n[Summary of Scan]\n\n";
     echo "Total files scanned:    $totalFilesScanned\n";
     echo "Files skipped (size):   $filesSkipped\n";
+    echo "Unreadable files:       $filesUnreadable\n";
+    echo "Unreadable dirs:        $dirsUnreadable\n";
     echo "Flagged (medium+):      $flagged\n";
     echo "\nBy risk level:\n";
     echo "  \033[35mCritical : {$riskCounts['critical']}\033[0m\n";
@@ -448,7 +536,10 @@ try {
     echo "  \033[36mLow      : {$riskCounts['low']}\033[0m\n";
     echo "  \033[32mClean    : {$riskCounts['clean']}\033[0m\n";
 
+    exit($flagged > 0 ? EXIT_FLAGGED : EXIT_CLEAN);
+
 } catch (Exception $e) {
     echo "\033[31m" . $e->getMessage() . "\033[0m\n";
+    exit(EXIT_ERROR);
 }
 ?>
