@@ -45,18 +45,16 @@ php -f scan.php [target_directory] [log_file] [--exclude=dir1,dir2,...] [--max=s
 ## Heuristic scoring
 
 - Each pattern carries a score
-- A file's total score is the sum of every matched pattern
+- Matched patterns are grouped by score tier, then added up
+  - Patterns scoring 8 and above count in full
+  - Low (1–3) and weak (4–7) patterns have [diminishing returns](#diminishing-returns) applied
 - The risk level is a representation of that total
 
-| Score | Level | Description |
-|-------|-------|-------------|
-| 0–7 | Clean | No meaningful signals |
-| 8–19 | Low | Common patterns stacking (worth noting but rarely actionable) |
-| 20–34 | Medium | Real concern — `eval`, `shell_exec`, `passthru` alone land here |
-| 35–59 | High | Strong indicators — `preg_replace /e`, `backdoor`, WP hook abuse |
-| 60+ | Critical | Multiple strong indicators combined |
-
-Only Medium and above are counted as "flagged" in the scan summary.
+- `0–7` - Clean, no meaningful signals
+- `8–19` - Low, common patterns stacking (worth noting but rarely actionable)
+- `20–34` - Medium, real concern (`eval`, `shell_exec`, `passthru` alone land here)
+- `35–59` - High, strong indicators (`preg_replace /e`, `backdoor`, WP hook abuse)
+- `60+` - Critical, multiple strong indicators combined
 
 ### Score tiers
 
@@ -70,9 +68,17 @@ Scores are calibrated so that common-but-legitimate patterns contribute little n
 | 20–25 | Strong indicators, rarely legitimate | `eval`, `shell_exec`, `passthru`, `create_function`, backtick execution, remote `file_get_contents` |
 | 35–40 | Near-certain malware | `preg_replace /e`, `backdoor`, WP hook payloads (`add_action.*base64_decode`), polyglot file headers |
 
+### Diminishing returns
+
+Large legitimate files (frameworks, CMS cores) match many low-score patterns just by their length. A straight sum would push them into higher risk bands without any real signal. To prevent this, the low and weak tiers are each summed and then passed through a saturating curve:
+
+```
+curved = cap × tanh(sum / cap)
+```
+
 ### False positive handling
 
-Patterns that were generating too many false positives are commented out rather than removed (`include`, `include_once`, `require`, `require_once`). Low-score patterns only contribute to a flag when they accumulate alongside higher-score matches. E.g., a file with only `$_POST` and `header()` scores a 3 and stays _Clean_.
+Patterns that were generating too many false positives are commented out rather than removed (`include`, `include_once`, `require`, `require_once`). Low-score patterns only contribute to a flag when they accumulate alongside higher-score matches.
 
 ## Enhancements
 

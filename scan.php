@@ -12,6 +12,14 @@ define('SCORE_MEDIUM',   20);
 define('SCORE_HIGH',     35);
 define('SCORE_CRITICAL', 60);
 
+// Diminishing returns
+// Low and weak hits are summed per tier, then squashed with cap * tanh(sum / cap)
+// Slope is 1 at the origin so a few hits count in full, and a tier can never add more than its cap
+define('LOW_SIGNAL_MAX_SCORE',  3);  // Low tier is 1..3
+define('WEAK_SIGNAL_MAX_SCORE', 7);  // Weak tier is 4..7, anything higher counts in full
+define('LOW_SIGNAL_CAP',        7);  // Under SCORE_LOW, so noise alone never shows up
+define('WEAK_SIGNAL_CAP',       40); // Weak hits alone top out around HIGH, never CRITICAL
+
 $minRiskScore  = SCORE_LOW;    // Minimum score for a file to appear in output. Override with --min-risk.
 $flagFromScore = SCORE_MEDIUM; // Minimum score to count as "flagged" in the summary. Override with --flag-from.
 $maxFileSize   = 1 * 1024 * 1024; // Maximum file size to scan in bytes. Override with --max.
@@ -251,14 +259,50 @@ function getPatternHits($fileContent) {
     return $hits;
 }
 
-function getScore($hits) {
-    $totalScore = 0;
-
-    foreach ($hits as $hit) {
-        $totalScore += $hit['score'];
+function getCurvedScore($score, $cap) {
+    if ($score <= 0) {
+        return 0;
     }
 
-    return $totalScore;
+    return $cap * tanh($score / $cap);
+}
+
+/**
+ * @return array{low: int, weak: int, full: int, lowCurved: float, weakCurved: float, total: int}
+ */
+function getScoreBreakdown($hits) {
+    $score = array('low' => 0, 'weak' => 0, 'full' => 0);
+
+    foreach ($hits as $hit) {
+        if ($hit['score'] >= 1 && $hit['score'] <= LOW_SIGNAL_MAX_SCORE) {
+            $score['low'] += $hit['score'];
+        } elseif ($hit['score'] > LOW_SIGNAL_MAX_SCORE && $hit['score'] <= WEAK_SIGNAL_MAX_SCORE) {
+            $score['weak'] += $hit['score'];
+        } else {
+            $score['full'] += $hit['score'];
+        }
+    }
+
+    $score['lowCurved']  = getCurvedScore($score['low'], LOW_SIGNAL_CAP);
+    $score['weakCurved'] = getCurvedScore($score['weak'], WEAK_SIGNAL_CAP);
+    $score['total']      = (int) round($score['full'] + $score['lowCurved'] + $score['weakCurved']);
+
+    return $score;
+}
+
+// "full 20 + weak 25→22.2 + low 17→6.9", omitting empty tiers
+function formatScoreBreakdown($score) {
+    $parts = array();
+    if ($score['full'] > 0) {
+        $parts[] = "full {$score['full']}";
+    }
+    if ($score['weak'] > 0) {
+        $parts[] = sprintf('weak %d→%.1f', $score['weak'], $score['weakCurved']);
+    }
+    if ($score['low'] > 0) {
+        $parts[] = sprintf('low %d→%.1f', $score['low'], $score['lowCurved']);
+    }
+    return implode(' + ', $parts);
 }
 
 // Scan file and return its risk score
@@ -275,8 +319,10 @@ function scanFile($filePath) {
         return -1;
     }
 
-    $hits = getPatternHits($fileContent);
-    $totalScore = getScore($hits);
+    $hits       = getPatternHits($fileContent);
+    $score      = getScoreBreakdown($hits);
+    $totalScore = $score['total'];
+    $isCurved   = $score['low'] + $score['weak'] > 0;
 
     if ($totalScore >= $minRiskScore) {
         $risk  = getRiskLevel($totalScore);
@@ -288,10 +334,16 @@ function scanFile($filePath) {
         foreach ($hits as $hit) {
             echo "  + {$hit['desc']} ({$hit['score']})\n";
         }
+        if ($isCurved) {
+            echo "  = " . formatScoreBreakdown($score) . "\n";
+        }
 
         logMessage("[{$label} — Score: {$totalScore}] {$filePath}");
         foreach ($hits as $hit) {
             logMessage("  + {$hit['desc']} (score: {$hit['score']}, pattern: {$hit['pattern']})");
+        }
+        if ($isCurved) {
+            logMessage("  = " . formatScoreBreakdown($score));
         }
     }
 
