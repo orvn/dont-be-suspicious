@@ -29,6 +29,9 @@ $phpExtensions   = array('php', 'phtml', 'pht', 'php3', 'php4', 'php5', 'php7', 
 $configFiles     = array('.htaccess', '.user.ini');
 $imageExtensions = array('ico', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'); // Only checked for hidden PHP
 
+// WAF bootstraps that legitimately use auto_prepend_file, and a string the real file contains
+$knownPrependFiles = array('wordfence-waf.php' => 'wordfence/waf/bootstrap.php');
+
 // Config
 $defaultDir = getcwd() ? getcwd() : '.';
 $defaultLog = getcwd() . DIRECTORY_SEPARATOR . 'suspicious_' . date('Ymd') . '.log';
@@ -265,7 +268,7 @@ $suspiciousPatterns = array(
 
 // Server config files (.htaccess, .user.ini)
 $configPatterns = array(
-    array('pattern' => '/auto_(prepend|append)_file/i',                                                    'score' => 20, 'desc' => 'auto_prepend_file / auto_append_file — runs a file on every request', 'scope' => 'raw'),
+    array('pattern' => '/auto_(prepend|append)_file/i',                                                    'score' => 20, 'desc' => 'auto_prepend_file / auto_append_file — runs a file on every request', 'scope' => 'raw', 'id' => 'auto_prepend'),
     array('pattern' => '/(AddHandler|AddType)\s+\S*(php|x-httpd)\S*\s+.*\.(jpe?g|png|gif|ico|bmp|webp|txt)\b/i', 'score' => 35, 'desc' => 'Image or text extension run as PHP', 'scope' => 'raw'),
     // Any line in the block before </Files, not just the first
     array('pattern' => '/<Files(Match)?\s[^>]*(?<![a-z])(jpe?g|png|gif|ico|bmp|webp)(?![a-z])[^>]*>(?:(?!<\/Files)[\s\S])*?(SetHandler|ForceType)\s+\S*php/i', 'score' => 35, 'desc' => 'Image files set to run as PHP', 'scope' => 'raw'),
@@ -429,6 +432,40 @@ function getPatternHits($fileContent, $patterns) {
     return $hits;
 }
 
+// Zero the auto_prepend_file hit when every prepended file is a real WAF bootstrap, not just one named like it
+function clearVerifiedPrependHits($hits, $content) {
+    global $knownPrependFiles;
+    /** @var array<string, string> $knownPrependFiles */
+    preg_match_all('/auto_(prepend|append)_file\s*=?\s*[\'"]?([^\'"\s]+)/i', $content, $match);
+    $names = array();
+
+    foreach ($match[2] as $path) {
+        if (strtolower($path) === 'none') {
+            continue;
+        }
+        $name = basename($path);
+        // Only read regular, small files, so a planted FIFO or device can't stall the scan
+        if (!isset($knownPrependFiles[$name]) || !is_file($path) || filesize($path) > 65536) {
+            return $hits;
+        }
+        if (strpos((string) @file_get_contents($path), $knownPrependFiles[$name]) === false) {
+            return $hits;
+        }
+        $names[$name] = true;
+    }
+
+    foreach ($hits as $i => $hit) {
+        if (isset($hit['id']) && $hit['id'] === 'auto_prepend') {
+            $hits[$i]['score'] = 0;
+            $hits[$i]['desc']  = empty($names)
+                ? 'auto_prepend_file — set to none'
+                : 'auto_prepend_file — verified WAF bootstrap (' . implode(', ', array_keys($names)) . ')';
+        }
+    }
+
+    return $hits;
+}
+
 // Trimmed source line, control chars masked so a file can't inject terminal escapes
 function getSnippet($lines, $lineNumber) {
     $line = isset($lines[$lineNumber - 1]) ? trim($lines[$lineNumber - 1]) : '';
@@ -497,7 +534,7 @@ function scanFile($filePath, $kind) {
     }
 
     if ($kind === 'config') {
-        $hits = getPatternHits($fileContent, $configPatterns);
+        $hits = clearVerifiedPrependHits(getPatternHits($fileContent, $configPatterns), $fileContent);
     } elseif ($kind === 'image') {
         $start = stripos($fileContent, '<?php');
         if ($start === false) {
