@@ -161,6 +161,9 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])call_user_func_array\s*\(/i',                      'score' => 5,  'desc' => 'call_user_func_array() — dynamic function dispatch'),
     array('pattern' => '/(^|[^A-Za-z0-9_])create_function\s*\(/i',                           'score' => 20, 'desc' => 'create_function() — eval-equivalent, deprecated'),
     array('pattern' => '/(^|[^A-Za-z0-9_])pcntl_exec\s*\(/i',                                'score' => 25, 'desc' => 'pcntl_exec() — replaces current process image'),
+    // Superglobal as the first argument, optionally wrapped in calls like base64_decode(
+    array('pattern' => '/(^|[^A-Za-z0-9_])(eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec|create_function|call_user_func|call_user_func_array)\s*\(\s*(@?\s*[A-Za-z_]\w*\s*\(\s*)*@?\s*\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES|ENV)/i', 'score' => 35, 'desc' => 'User input passed straight into code or command execution'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])(include|require)(_once)?\s*\(?\s*(@?\s*[A-Za-z_]\w*\s*\(\s*)*@?\s*\$_(GET|POST|REQUEST|COOKIE|FILES)/i', 'score' => 25, 'desc' => 'File included from user input — remote/local file inclusion'),
 
     // File operations
     array('pattern' => '/(^|[^A-Za-z0-9_])fopen\s*\(/i',                                     'score' => 1,  'desc' => 'fopen() — opens a file'),
@@ -264,10 +267,11 @@ $suspiciousPatterns = array(
 $configPatterns = array(
     array('pattern' => '/auto_(prepend|append)_file/i',                                                    'score' => 20, 'desc' => 'auto_prepend_file / auto_append_file — runs a file on every request', 'scope' => 'raw'),
     array('pattern' => '/(AddHandler|AddType)\s+\S*(php|x-httpd)\S*\s+.*\.(jpe?g|png|gif|ico|bmp|webp|txt)\b/i', 'score' => 35, 'desc' => 'Image or text extension run as PHP', 'scope' => 'raw'),
-    array('pattern' => '/<Files(Match)?\s[^>]*(jpe?g|png|gif|ico|bmp|webp)[^>]*>\s*SetHandler\s+\S*php/i',  'score' => 35, 'desc' => 'Image files set to run as PHP', 'scope' => 'raw'),
-    // Negated conditions are hotlink whitelists, not cloaking
-    array('pattern' => '/RewriteCond\s+%\{HTTP_REFERER\}\s+"?(?!!)[^\n]*(google|bing|yahoo|yandex|baidu)/i', 'score' => 25, 'desc' => 'Rewrite on search engine referrer — SEO redirect cloaking', 'scope' => 'raw'),
-    array('pattern' => '/RewriteCond\s+%\{HTTP_USER_AGENT\}\s+"?(?!!)[^\n]*(google|bing)/i',               'score' => 12, 'desc' => 'Rewrite on search engine user agent — possible cloaking', 'scope' => 'raw'),
+    // Any line in the block before </Files, not just the first
+    array('pattern' => '/<Files(Match)?\s[^>]*(?<![a-z])(jpe?g|png|gif|ico|bmp|webp)(?![a-z])[^>]*>(?:(?!<\/Files)[\s\S])*?(SetHandler|ForceType)\s+\S*php/i', 'score' => 35, 'desc' => 'Image files set to run as PHP', 'scope' => 'raw'),
+    // Negated conditions, quoted or not, are hotlink whitelists, not cloaking
+    array('pattern' => '/RewriteCond\s+%\{HTTP_REFERER\}\s+(?!"?!)[^\n]*(?<![a-z])(google|bing|yahoo|yandex|baidu)(?![a-z])/i', 'score' => 25, 'desc' => 'Rewrite on search engine referrer — SEO redirect cloaking', 'scope' => 'raw'),
+    array('pattern' => '/RewriteCond\s+%\{HTTP_USER_AGENT\}\s+(?!"?!)[^\n]*(?<![a-z])(google|bing)(bot)?(?![a-z])/i', 'score' => 12, 'desc' => 'Rewrite on search engine user agent — possible cloaking', 'scope' => 'raw'),
 );
 
 // Counters for report
