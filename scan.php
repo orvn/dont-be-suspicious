@@ -264,8 +264,10 @@ $suspiciousPatterns = array(
 $configPatterns = array(
     array('pattern' => '/auto_(prepend|append)_file/i',                                                    'score' => 20, 'desc' => 'auto_prepend_file / auto_append_file — runs a file on every request', 'scope' => 'raw'),
     array('pattern' => '/(AddHandler|AddType)\s+\S*(php|x-httpd)\S*\s+.*\.(jpe?g|png|gif|ico|bmp|webp|txt)\b/i', 'score' => 35, 'desc' => 'Image or text extension run as PHP', 'scope' => 'raw'),
-    array('pattern' => '/RewriteCond\s+%\{HTTP_REFERER\}.*(google|bing|yahoo|yandex|baidu)/i',             'score' => 25, 'desc' => 'Rewrite on search engine referrer — SEO redirect cloaking', 'scope' => 'raw'),
-    array('pattern' => '/RewriteCond\s+%\{HTTP_USER_AGENT\}.*(google|bing|yahoo|yandex|baidu)/i',          'score' => 12, 'desc' => 'Rewrite on search engine user agent — possible cloaking', 'scope' => 'raw'),
+    array('pattern' => '/<Files(Match)?\s[^>]*(jpe?g|png|gif|ico|bmp|webp)[^>]*>\s*SetHandler\s+\S*php/i',  'score' => 35, 'desc' => 'Image files set to run as PHP', 'scope' => 'raw'),
+    // Negated conditions are hotlink whitelists, not cloaking
+    array('pattern' => '/RewriteCond\s+%\{HTTP_REFERER\}\s+"?(?!!)[^\n]*(google|bing|yahoo|yandex|baidu)/i', 'score' => 25, 'desc' => 'Rewrite on search engine referrer — SEO redirect cloaking', 'scope' => 'raw'),
+    array('pattern' => '/RewriteCond\s+%\{HTTP_USER_AGENT\}\s+"?(?!!)[^\n]*(google|bing)/i',               'score' => 12, 'desc' => 'Rewrite on search engine user agent — possible cloaking', 'scope' => 'raw'),
 );
 
 // Counters for report
