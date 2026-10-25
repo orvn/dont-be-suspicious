@@ -41,6 +41,8 @@ define('EXIT_CLEAN',   0);
 define('EXIT_FLAGGED', 1);
 define('EXIT_ERROR',   2);
 
+define('DECODED_MARK', "\x01"); // Starts a literal the decoded view unescaped or folded
+
 // Raw --exclude args, resolved once the target is known
 $excludeArgs  = array();
 $excludedDirs = array();
@@ -131,7 +133,8 @@ for ($i = 2; $i < count($positional); $i++) {
 // scope: which view of the file to match, see getSourceViews()
 //   code (default): code only, no comments, strings, inline HTML or method names
 //   text          : comments stripped
-//   decoded       : comments and inline HTML stripped, double-quoted escapes like \x2e decoded
+//   decoded       : comments and inline HTML stripped, escapes decoded, chr(), "a"."b" and base64_decode("...") folded
+//                   literals that were decoded or folded start with DECODED_MARK
 //   raw           : as is
 //
 $suspiciousPatterns = array(
@@ -151,6 +154,21 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])mcrypt_decrypt\s*\(/i',                            'score' => 2,  'desc' => 'mcrypt_decrypt() — legacy decryption'),
     array('pattern' => '/(^|[^A-Za-z0-9_])openssl_encrypt\s*\(/i',                           'score' => 1,  'desc' => 'openssl_encrypt() — OpenSSL encryption'),
     array('pattern' => '/(^|[^A-Za-z0-9_])openssl_decrypt\s*\(/i',                           'score' => 1,  'desc' => 'openssl_decrypt() — OpenSSL decryption'),
+
+    // Encoded strings, marked literals were hidden with escapes, chr() or concatenation
+    array('pattern' => '/"\x01(eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec|create_function)"/i', 'score' => 35, 'desc' => 'Hidden name of a code or command execution function', 'scope' => 'decoded'),
+    array('pattern' => '/"\x01(GLOBALS|_(GET|POST|REQUEST|COOKIE|SERVER))"/i',                 'score' => 15, 'desc' => 'Hidden superglobal name', 'scope' => 'decoded'),
+    // Weak, the Freemius SDK writes 'base64' . '_decode' on purpose
+    array('pattern' => '/"\x01(base64_decode|gzinflate|gzuncompress|gzdecode|str_rot13|strrev|preg_replace|file_get_contents|file_put_contents|fwrite|fopen|unlink|move_uploaded_file|curl_exec|call_user_func(_array)?|(include|require)(_once)?)"/i', 'score' => 7, 'desc' => 'Hidden name of a decoding or file function', 'scope' => 'decoded'),
+    array('pattern' => '/[\'"]\x01?(eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec)[\'"]\s*\(/i', 'score' => 35, 'desc' => 'Execution function called by its name as a string', 'scope' => 'decoded'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])(call_user_func(_array)?|array_map|array_filter|array_walk|array_reduce|usort|uasort|uksort|register_shutdown_function|ob_start|set_error_handler|iterator_apply|preg_replace_callback)\s*\((?:(?!\?>)[^;])*?[\'"]\x01?(assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec|create_function)[\'"]/i', 'score' => 35, 'desc' => 'Execution function passed as a callback', 'scope' => 'decoded'),
+    // Letters, digits and _ only, so regex classes like [\x00-\x20] and binary headers stay out
+    array('pattern' => '/(?:\\\\(?:x(?:3[0-9]|[46][1-9a-f]|[57][0-9a]|5f)|0?[67][0-7]|1[0-7]{2})){5,}/i', 'score' => 12, 'desc' => 'Run of hex or octal escapes spelling a word', 'scope' => 'text'),
+    array('pattern' => '/(\bchr\s*\(\s*(\d+|0x[0-9a-f]+)\s*\)\s*\.\s*){3,}/i',               'score' => 12, 'desc' => 'chr() chain — string built byte by byte'),
+    array('pattern' => '/(?<![A-Za-z0-9+\/])(?<!base64,)[A-Za-z0-9+\/]{200,}={0,2}/',          'score' => 12, 'desc' => 'Long base64 or hex blob', 'scope' => 'raw'),
+    // Legit code rarely passes 300, packed one-liners run into the thousands
+    array('pattern' => '/\S{500,}/',                                                          'score' => 5,  'desc' => 'Long run of code with no whitespace — packed or minified'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])(eval|assert)\s*\((\s*@?\s*(base64_decode|gzinflate|gzuncompress|gzdecode|str_rot13|strrev|hex2bin|pack|urldecode|rawurldecode|convert_uudecode)\s*\()+/i', 'score' => 35, 'desc' => 'eval() of a decoded or decompressed string'),
 
     // Code execution
     array('pattern' => '/(^|[^A-Za-z0-9_])eval\s*\(/i',                                      'score' => 20, 'desc' => 'eval() — arbitrary code execution'),
@@ -249,9 +267,10 @@ $suspiciousPatterns = array(
 
     // Shell tricks
     array('pattern' => '/`.*`/i',                                                             'score' => 20, 'desc' => 'Backtick shell execution'),
-    array('pattern' => '/backdoor/i',                                                         'score' => 40, 'desc' => '"backdoor" — explicit backdoor indicator', 'scope' => 'text'),
-    array('pattern' => '/shell/i',                                                            'score' => 0,  'desc' => '"shell" — references shell commands', 'scope' => 'text'),
-    array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution', 'scope' => 'text'),
+    // Identifiers only, a security plugin's "Backdoor found" message doesn't count
+    array('pattern' => '/backdoor/i',                                                         'score' => 40, 'desc' => '"backdoor" — explicit backdoor indicator'),
+    array('pattern' => '/shell/i',                                                            'score' => 0,  'desc' => '"shell" — references shell commands'),
+    array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution'),
 
     // WP specific
     array('pattern' => '/(^|[^A-Za-z0-9_])add_action\s*\(.*[^A-Za-z0-9_]base64_decode/i',    'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload', 'scope' => 'text'),
@@ -408,7 +427,9 @@ function getSourceViews($content) {
         $text .= $value;
 
         if ($id === T_CONSTANT_ENCAPSED_STRING && $value[0] === '"') {
-            $decoded .= '"' . decodeString(substr($value, 1, -1), $lines) . '"';
+            $inner    = substr($value, 1, -1);
+            $mark     = preg_match('/\\\\(x[0-9a-f]|[0-7])/i', $inner) ? DECODED_MARK : '';
+            $decoded .= '"' . $mark . decodeString($inner, $lines) . '"';
         } elseif ($id === T_ENCAPSED_AND_WHITESPACE) {
             $decoded .= decodeString($value, $lines);
         } elseif ($id === T_INLINE_HTML) {
@@ -430,12 +451,48 @@ function getSourceViews($content) {
         }
     }
 
-    return array('raw' => $content, 'text' => $text, 'decoded' => $decoded, 'code' => $code);
+    return array('raw' => $content, 'text' => $text, 'decoded' => foldDecoded($decoded), 'code' => $code);
 }
 
 // Unescape \x41, \101, \n etc., with line breaks moved to the end so line numbers hold
 function decodeString($value, $lines) {
     return str_replace(array("\r", "\n"), ' ', stripcslashes($value)) . $lines;
+}
+
+// Turn chr(N), "a" . "b" and decoders of a literal into one marked literal, so hidden names read whole
+function foldDecoded($view) {
+    $view = preg_replace_callback('/\bchr\s*\(\s*(\d+|0x[0-9a-f]+)\s*\)/i', 'foldChr', $view);
+    $view = foldConcats($view);
+    $view = preg_replace_callback('/\b(base64_decode|str_rot13|strrev)\s*\(\s*(["\'])([^"\']*)\2\s*\)/i', 'foldDecoder', $view);
+    return foldConcats($view);
+}
+
+function foldConcats($view) {
+    do {
+        $view = preg_replace_callback('/(["\'])([^"\']*)\1\s*\.\s*(["\'])([^"\']*)\3/', 'foldConcat', $view, -1, $count);
+    } while ($count);
+    return $view;
+}
+
+function foldChr($m) {
+    $n = (int) (stripos($m[1], '0x') === 0 ? hexdec($m[1]) : $m[1]);
+    return '"' . DECODED_MARK . strtr(chr($n), "\"'\r\n", '    ') . '"';
+}
+
+function foldConcat($m) {
+    $inner = str_replace(array("\r", "\n", DECODED_MARK), '', $m[2] . $m[4]);
+    return '"' . DECODED_MARK . $inner . '"' . str_repeat("\n", substr_count($m[0], "\n"));
+}
+
+// Left as is unless the result is printable text, so code payloads stay with the blob rules
+function foldDecoder($m) {
+    $fn    = strtolower($m[1]);
+    $value = str_replace(DECODED_MARK, '', $m[3]);
+    $value = $fn === 'base64_decode' ? base64_decode($value, true) : ($fn === 'strrev' ? strrev($value) : str_rot13($value));
+    if ($value === false || preg_match('/[^\x20-\x7e]/', $value)) {
+        return $m[0];
+    }
+    return '"' . DECODED_MARK . strtr($value, "\"'", '  ') . '"' . str_repeat("\n", substr_count($m[0], "\n"));
 }
 
 function getPatternHits($fileContent, $patterns) {
