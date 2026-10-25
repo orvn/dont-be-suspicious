@@ -131,6 +131,7 @@ for ($i = 2; $i < count($positional); $i++) {
 // scope: which view of the file to match, see getSourceViews()
 //   code (default): code only, no comments, strings, inline HTML or method names
 //   text          : comments stripped
+//   decoded       : comments and inline HTML stripped, double-quoted escapes like \x2e decoded
 //   raw           : as is
 //
 $suspiciousPatterns = array(
@@ -167,6 +168,10 @@ $suspiciousPatterns = array(
     // Superglobal as the first argument, optionally wrapped in calls like base64_decode(
     array('pattern' => '/(^|[^A-Za-z0-9_])(eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec|create_function|call_user_func|call_user_func_array)\s*\(\s*(@?\s*[A-Za-z_]\w*\s*\(\s*)*@?\s*\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES|ENV)/i', 'score' => 35, 'desc' => 'User input passed straight into code or command execution'),
     array('pattern' => '/(^|[^A-Za-z0-9_])(include|require)(_once)?\s*\(?\s*(@?\s*[A-Za-z_]\w*\s*\(\s*)*@?\s*\$_(GET|POST|REQUEST|COOKIE|FILES)/i', 'score' => 25, 'desc' => 'File included from user input — remote/local file inclusion'),
+
+    // Include of a non-PHP file in the same statement, svg/css/js left out since themes inline those
+    array('pattern' => '/(^|[^A-Za-z0-9_])(include|require)(_once)?\b(?:(?!\?>)[^;])*?[\'"][^\'"]*\.(ico|png|jpe?g|gif|bmp|webp)[\'"]/i', 'score' => 35, 'desc' => 'Include of an image or .ico file — hidden PHP payload', 'scope' => 'decoded'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])(include|require)(_once)?\b(?:(?!\?>)[^;])*?[\'"][^\'"]*\.(txt|log|dat|tmp|bak|zip|gz)[\'"]/i', 'score' => 25, 'desc' => 'Include of a data or backup file — possible hidden PHP payload', 'scope' => 'decoded'),
 
     // File operations
     array('pattern' => '/(^|[^A-Za-z0-9_])fopen\s*\(/i',                                     'score' => 1,  'desc' => 'fopen() — opens a file'),
@@ -356,11 +361,11 @@ function getRiskLevel($score) {
 
 // Views for pattern scopes, line breaks preserved
 /**
- * @return array{raw: string, text: string, code: string}
+ * @return array{raw: string, text: string, decoded: string, code: string}
  */
 function getSourceViews($content) {
     if (!function_exists('token_get_all')) {
-        return array('raw' => $content, 'text' => $content, 'code' => $content);
+        return array('raw' => $content, 'text' => $content, 'decoded' => $content, 'code' => $content);
     }
 
     // Treat bare <? as PHP even when short_open_tag is off
@@ -372,14 +377,16 @@ function getSourceViews($content) {
         $nameOperators[] = constant('T_NULLSAFE_OBJECT_OPERATOR');
     }
 
-    $text = '';
-    $code = '';
-    $prev = null; // Last significant token
+    $text    = '';
+    $decoded = '';
+    $code    = '';
+    $prev    = null; // Last significant token
 
     foreach (token_get_all($source) as $token) {
         if (is_string($token)) {
-            $text .= $token;
-            $code .= $token;
+            $text    .= $token;
+            $decoded .= $token;
+            $code    .= $token;
             if (!($token === '&' && $prev === T_FUNCTION)) {
                 $prev = $token;
             }
@@ -392,12 +399,23 @@ function getSourceViews($content) {
         if ($id === T_COMMENT || $id === T_DOC_COMMENT) {
             // Space keeps eval/**/( matching and return/**/eval apart
             $blank = $lines === '' ? ' ' : $lines;
-            $text .= $blank;
-            $code .= $blank;
+            $text    .= $blank;
+            $decoded .= $blank;
+            $code    .= $blank;
             continue;
         }
 
         $text .= $value;
+
+        if ($id === T_CONSTANT_ENCAPSED_STRING && $value[0] === '"') {
+            $decoded .= '"' . decodeString(substr($value, 1, -1), $lines) . '"';
+        } elseif ($id === T_ENCAPSED_AND_WHITESPACE) {
+            $decoded .= decodeString($value, $lines);
+        } elseif ($id === T_INLINE_HTML) {
+            $decoded .= $lines;
+        } else {
+            $decoded .= $value;
+        }
 
         if ($id === T_CONSTANT_ENCAPSED_STRING) {
             $code .= $value[0] . $value[0] . $lines;
@@ -412,7 +430,12 @@ function getSourceViews($content) {
         }
     }
 
-    return array('raw' => $content, 'text' => $text, 'code' => $code);
+    return array('raw' => $content, 'text' => $text, 'decoded' => $decoded, 'code' => $code);
+}
+
+// Unescape \x41, \101, \n etc., with line breaks moved to the end so line numbers hold
+function decodeString($value, $lines) {
+    return str_replace(array("\r", "\n"), ' ', stripcslashes($value)) . $lines;
 }
 
 function getPatternHits($fileContent, $patterns) {
