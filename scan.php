@@ -199,6 +199,12 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*(?!("|\')https?:\/\/)/i', 'score' => 1,  'desc' => 'file_get_contents() — reads a file', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])unlink\s*\(/i',                                    'score' => 3,  'desc' => 'unlink() — deletes a file'),
     array('pattern' => '/(^|[^A-Za-z0-9_])rename\s*\(/i',                                    'score' => 2,  'desc' => 'rename() — renames a file'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])chmod\s*\(/i',                                     'score' => 2,  'desc' => 'chmod() — changes file permissions'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])move_uploaded_file\s*\(/i',                        'score' => 3,  'desc' => 'move_uploaded_file() — stores an upload'),
+    // Destination argument holds user input, $_FILES names left out since every uploader uses those
+    array('pattern' => '/(^|[^A-Za-z0-9_])move_uploaded_file\s*\((?:[^;()]|\([^()]*\))*?,(?:[^;()]|\([^()]*\))*?\$_(GET|POST|REQUEST|COOKIE)/i', 'score' => 20, 'desc' => 'Upload moved to a user-chosen path — arbitrary file write'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])touch\s*\((?:[^;,()]|\([^()]*\))*,/i',             'score' => 3,  'desc' => 'touch() with a time — sets a file timestamp'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])touch\s*\([^;]*,\s*@?\s*filemtime\s*\(/i',          'score' => 20, 'desc' => 'touch() with the mtime of another file — hides a modified file'),
     array('pattern' => '/(^|[^A-Za-z0-9_])file_get_contents\s*\(\s*("|\')https?:\/\//i',    'score' => 20, 'desc' => 'file_get_contents() with remote URL — remote file inclusion', 'scope' => 'text'),
 
     // Dangerous or evasive functions
@@ -208,6 +214,12 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])register_shutdown_function\s*\(/i',                'score' => 5,  'desc' => 'register_shutdown_function() — registers persistent callback'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ini_set\s*\(/i',                                   'score' => 2,  'desc' => 'ini_set() — modifies PHP runtime configuration'),
     array('pattern' => '/(^|[^A-Za-z0-9_])ini_get\s*\(/i',                                   'score' => 1,  'desc' => 'ini_get() — reads PHP runtime configuration'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])error_reporting\s*\(\s*0\s*\)/i',                  'score' => 2,  'desc' => 'error_reporting(0) — hides errors'),
+    // All three in one file, each alone is common in cron and import code, \K reports the first one
+    array('pattern' => '/^(?=[\s\S]*?error_reporting\s*\(\s*0\s*\))(?=[\s\S]*?set_time_limit\s*\(\s*0\s*\))(?=[\s\S]*?ignore_user_abort\s*\()[\s\S]*?\K(?:error_reporting\s*\(\s*0|set_time_limit\s*\(\s*0|ignore_user_abort\s*\()/i', 'score' => 15, 'desc' => 'error_reporting(0) + set_time_limit(0) + ignore_user_abort() — shell or mailer setup'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])extract\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)/i',     'score' => 15, 'desc' => 'extract() of user input — overwrites variables'),
+    // Single argument, so the parsed keys become variables
+    array('pattern' => '/(^|[^A-Za-z0-9_])parse_str\s*\((?:[^;,()]|\([^()]*\))*\)/i',        'score' => 12, 'desc' => 'parse_str() without a result array — writes variables from a string'),
     array('pattern' => '/\$\$/i',                                                             'score' => 7,  'desc' => 'Variable variables ($$var) — obfuscation / dynamic dispatch'),
     array('pattern' => '/\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES|ENV)(\s*\[[^\]]*\])+\s*\(/i', 'score' => 35, 'desc' => '$_POST[...](...) — function name taken from user input'),
     array('pattern' => '/\$[A-Za-z_]\w*\s*\(\s*\$_(GET|POST|REQUEST|COOKIE|SERVER|FILES)/i',  'score' => 20, 'desc' => '$fn($_POST...) — variable function called with user input'),
@@ -249,6 +261,8 @@ $suspiciousPatterns = array(
     array('pattern' => '/(^|[^A-Za-z0-9_])pfsockopen\s*\(/i',                                'score' => 5,  'desc' => 'pfsockopen() — persistent raw socket connection'),
     array('pattern' => '/(^|[^A-Za-z0-9_])stream_socket_client\s*\(/i',                      'score' => 5,  'desc' => 'stream_socket_client() — socket client'),
     array('pattern' => '/(^|[^A-Za-z0-9_])stream_socket_server\s*\(/i',                      'score' => 12, 'desc' => 'stream_socket_server() — creates socket server (very unusual in web PHP)'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])mail\s*\(/i',                                      'score' => 3,  'desc' => 'mail() — sends email'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])mail\s*\(\s*@?\s*(?:[A-Za-z_]\w*\s*\(\s*)*\$_(GET|POST|REQUEST|COOKIE)/i', 'score' => 12, 'desc' => 'mail() to a user-supplied address — spam relay'),
 
     // Session handling
     array('pattern' => '/(^|[^A-Za-z0-9_])session_start\s*\(/i',                             'score' => 1,  'desc' => 'session_start() — initiates session'),
