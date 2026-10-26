@@ -238,7 +238,7 @@ $suspiciousPatterns = array(
     // HTTP behavior
     array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_REFERER[\'"]\s*\]/i',                    'score' => 5,  'desc' => 'HTTP_REFERER check — potential bot/crawler cloaking', 'scope' => 'text'),
     array('pattern' => '/\$_SERVER\s*\[\s*[\'"]HTTP_USER_AGENT[\'"]\s*\]/i',                 'score' => 5,  'desc' => 'HTTP_USER_AGENT check — potential search engine cloaking', 'scope' => 'text'),
-    array('pattern' => '/preg_match\s*\(.*(HTTP_USER_AGENT|HTTP_REFERER)/i',                  'score' => 5,  'desc' => 'Regex match on user agent or referrer', 'scope' => 'text'),
+    array('pattern' => '/preg_match\s*\((?:(?!\?>)[^;])*?(HTTP_USER_AGENT|HTTP_REFERER)/i',    'score' => 5,  'desc' => 'Regex match on user agent or referrer', 'scope' => 'text'),
     array('pattern' => '/strpos\s*\(\s*\$_SERVER\s*\[\s*[\'"](HTTP_USER_AGENT|HTTP_REFERER)[\'"]\s*\]/i', 'score' => 5, 'desc' => 'String search on user agent or referrer', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])header\s*\(/i',                                    'score' => 1,  'desc' => 'header() — sends raw HTTP header'),
     array('pattern' => '/(^|[^A-Za-z0-9_])setcookie\s*\(/i',                                 'score' => 1,  'desc' => 'setcookie() — sets a cookie'),
@@ -287,8 +287,9 @@ $suspiciousPatterns = array(
     array('pattern' => '/cmd/i',                                                              'score' => 0,  'desc' => '"cmd" — references command execution'),
 
     // WP specific
-    array('pattern' => '/(^|[^A-Za-z0-9_])add_action\s*\(.*[^A-Za-z0-9_]base64_decode/i',    'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload', 'scope' => 'text'),
-    array('pattern' => '/(^|[^A-Za-z0-9_])add_filter\s*\(.*[^A-Za-z0-9_]eval/i',             'score' => 35, 'desc' => 'WordPress filter with eval', 'scope' => 'text'),
+    // Spans lines but stays inside the statement, stops at a semicolon or closing tag
+    array('pattern' => '/(^|[^A-Za-z0-9_])add_action\s*\((?:(?!\?>)[^;])*?[^A-Za-z0-9_]base64_decode/i', 'score' => 35, 'desc' => 'WordPress hook with base64-encoded payload', 'scope' => 'text'),
+    array('pattern' => '/(^|[^A-Za-z0-9_])add_filter\s*\((?:(?!\?>)[^;])*?[^A-Za-z0-9_]eval(?![A-Za-z0-9_])/i', 'score' => 35, 'desc' => 'WordPress filter with eval', 'scope' => 'text'),
     array('pattern' => '/(^|[^A-Za-z0-9_])wp_eval_request\s*\(/i',                           'score' => 40, 'desc' => 'wp_eval_request() — known malicious plugin pattern'),
     array('pattern' => '/\$GLOBALS\s*\[\s*["\']wp_filter["\']\s*\]/i',                       'score' => 12, 'desc' => '$GLOBALS[wp_filter] — direct WordPress hook manipulation', 'scope' => 'text'),
     array('pattern' => '/functions\.php/i',                                                   'score' => 0,  'desc' => 'Reference to functions.php', 'scope' => 'text'),
